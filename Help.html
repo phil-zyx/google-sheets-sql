@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Sheets SQL - 帮助文档</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        
+        .header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .function-table {
+            margin-top: 20px;
+        }
+        
+        .back-link {
+            margin-top: 30px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Google Sheets SQL 帮助文档</h1>
+            <p>基于 Google Apps Scripts + AlaSQL 的 SQL 查询工具</p>
+        </div>
+
+        <div class="row">
+            <div class="col-md-3">
+                <div class="list-group">
+                    <a href="#introduction" class="list-group-item list-group-item-action">简介</a>
+                    <a href="#basics" class="list-group-item list-group-item-action">基础用法</a>
+                    <a href="#table-references" class="list-group-item list-group-item-action">表引用</a>
+                    <a href="#joins" class="list-group-item list-group-item-action">联表查询</a>
+                    <a href="#json" class="list-group-item list-group-item-action">JSON 处理</a>
+                    <a href="#functions" class="list-group-item list-group-item-action">SQL 函数</a>
+                    <a href="#limitations" class="list-group-item list-group-item-action">限制说明</a>
+                    <a href="#tips" class="list-group-item list-group-item-action">使用技巧</a>
+                </div>
+            </div>
+
+            <div class="col-md-9">
+                <section id="introduction">
+                    <h2>简介</h2>
+                    <p>Google Sheets SQL 是一个基于 Google Apps Scripts 和 AlaSQL 的工具，允许您使用 SQL 语法查询 Google Drive 中的任何 Sheet 文件数据。</p>
+                    <p>主要功能包括：</p>
+                    <ul>
+                        <li>查询任何有权限访问的 Google Sheet 文件</li>
+                        <li>使用标准 SQL 语法进行查询</li>
+                        <li>支持跨表联查（JOIN）</li>
+                        <li>自动识别和解析 JSON 格式的列</li>
+                        <li>提供扩展的 JSON 处理函数</li>
+                        <li>查询元数据和统计信息</li>
+                    </ul>
+                </section>
+
+                <section id="basics">
+                    <h2>基础用法</h2>
+                    <p>基本查询语法遵循标准 SQL：</p>
+                    <pre>SELECT * FROM 文件名.工作表名 WHERE 条件 LIMIT 10</pre>
+
+                    <p>例如，查询一个名为"销售数据"的文件中的"2023年"工作表：</p>
+                    <pre>SELECT * FROM 销售数据.2023年 WHERE 金额 > 1000 ORDER BY 日期 DESC LIMIT 20</pre>
+
+                    <p>使用步骤：</p>
+                    <ol>
+                        <li>左侧面板浏览可用的工作表</li>
+                        <li>点击工作表名可以展开查看内部的工作表</li>
+                        <li>点击具体的工作表名称会将其插入到编辑器中</li>
+                        <li>编写 SQL 查询</li>
+                        <li>点击"执行查询"按钮运行</li>
+                    </ol>
+                </section>
+
+                <section id="table-references">
+                    <h2>表引用</h2>
+                    <p>在 SQL 查询中引用表的格式是：</p>
+                    <pre>文件名.工作表名</pre>
+
+                    <p>例如：</p>
+                    <pre>SELECT * FROM 销售数据.Sheet1</pre>
+
+                    <p>您也可以使用别名简化查询：</p>
+                    <pre>SELECT s.* FROM 销售数据.Sheet1 s WHERE s.区域 = '北京'</pre>
+
+                    <p><strong>注意：</strong> 文件名和工作表名区分大小写，且必须与 Google Drive 中的实际名称完全匹配。</p>
+                </section>
+
+                <section id="joins">
+                    <h2>联表查询</h2>
+                    <p>您可以连接来自不同文件或同一文件中不同工作表的数据：</p>
+
+                    <pre>SELECT 
+  a.员工ID, 
+  a.姓名, 
+  b.部门名称, 
+  c.薪资
+FROM 员工信息.基本资料 a
+JOIN 部门信息.部门列表 b ON a.部门ID = b.部门ID
+JOIN 薪资数据.月度薪资 c ON a.员工ID = c.员工ID
+WHERE b.部门名称 = '技术部'
+ORDER BY c.薪资 DESC</pre>
+
+                    <p>支持的连接类型：</p>
+                    <ul>
+                        <li>JOIN 或 INNER JOIN - 内连接</li>
+                        <li>LEFT JOIN - 左外连接</li>
+                        <li>RIGHT JOIN - 右外连接</li>
+                    </ul>
+                </section>
+
+                <section id="json">
+                    <h2>JSON 处理</h2>
+                    <p>系统会自动检测和解析 Sheet 中的 JSON 格式数据。如果某一列包含 JSON 字符串，您可以使用特殊函数来查询其中的值：</p>
+
+                    <pre>SELECT
+  id,
+  姓名,
+  JSON_VALUE(附加信息, '$.address.city') AS 城市,
+  JSON_VALUE(附加信息, '$.age') AS 年龄
+FROM 用户数据.用户信息
+WHERE JSON_VALUE(附加信息, '$.age') > 30</pre>
+
+                    <p>主要的 JSON 处理函数：</p>
+                    <ul>
+                        <li><code>JSON_VALUE(列名, '$.path')</code> - 从 JSON 中提取标量值</li>
+                        <li><code>JSON_QUERY(列名, '$.path')</code> - 从 JSON 中提取对象或数组</li>
+                        <li><code>JSON_EXISTS(列名, '$.path')</code> - 检查 JSON 路径是否存在</li>
+                        <li><code>ARRAY_LENGTH(列名)</code> - 获取 JSON 数组的长度</li>
+                    </ul>
+                </section>
+
+                <section id="functions">
+                    <h2>SQL 函数</h2>
+                    <p>除了标准 SQL 函数外，工具还支持以下函数：</p>
+
+                    <table class="table function-table">
+                        <thead>
+                            <tr>
+                                <th>函数类型</th>
+                                <th>函数示例</th>
+                                <th>说明</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>聚合函数</td>
+                                <td>COUNT(), SUM(), AVG(), MIN(), MAX()</td>
+                                <td>计数、求和、平均值、最小值、最大值</td>
+                            </tr>
+                            <tr>
+                                <td>字符串函数</td>
+                                <td>UPPER(), LOWER(), CONCAT(), SUBSTRING()</td>
+                                <td>大写、小写、连接、子字符串</td>
+                            </tr>
+                            <tr>
+                                <td>数学函数</td>
+                                <td>ROUND(), FLOOR(), CEILING(), ABS()</td>
+                                <td>四舍五入、向下取整、向上取整、绝对值</td>
+                            </tr>
+                            <tr>
+                                <td>日期函数</td>
+                                <td>YEAR(), MONTH(), DAY(), NOW()</td>
+                                <td>提取年、月、日，当前时间</td>
+                            </tr>
+                            <tr>
+                                <td>JSON 函数</td>
+                                <td>JSON_VALUE(), JSON_QUERY(), JSON_EXISTS()</td>
+                                <td>JSON 处理函数</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </section>
+
+                <section id="limitations">
+                    <h2>限制说明</h2>
+                    <p>使用本工具时，请注意以下限制：</p>
+                    <ul>
+                        <li>查询速度取决于工作表大小和复杂度</li>
+                        <li>对于大型表格，首次加载可能较慢</li>
+                        <li>复杂的联表查询可能需要较长时间执行</li>
+                        <li>用户必须对所查询的 Sheet 有访问权限</li>
+                        <li>每次会话的查询结果不会永久保存</li>
+                        <li>Google Apps Scripts 有执行时间限制，过于复杂的查询可能会超时</li>
+                    </ul>
+                </section>
+
+                <section id="tips">
+                    <h2>使用技巧</h2>
+                    <ul>
+                        <li>使用 LIMIT 子句限制返回的数据量，提高查询性能</li>
+                        <li>对于大型查询，先使用小数据集测试再扩大范围</li>
+                        <li>利用编辑器的格式化功能使 SQL 更易读</li>
+                        <li>查看元数据标签页了解表结构和数据类型</li>
+                        <li>使用查询历史记录功能保存和重用常用查询</li>
+                        <li>对于常用的复杂查询，可以创建视图然后查询视图</li>
+                    </ul>
+                </section>
+
+                <div class="back-link">
+                    <a href="javascript:window.close();" class="btn btn-primary">返回应用</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // 滚动到锚点位置
+        document.querySelectorAll('.list-group-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href').substring(1);
+                const targetElement = document.getElementById(targetId);
+                window.scrollTo({
+                    top: targetElement.offsetTop - 20,
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>
