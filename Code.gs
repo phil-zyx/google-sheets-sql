@@ -59,7 +59,7 @@ function initAlaSQL() {
 function getAllSheets() {
   try {
     const result = [];
-    const rootFolder = DriveApp.getFolderById("18fRVYlkXD7hhfQbeYhePDd-upXPF5EyJ");
+    const rootFolder = DriveApp.getFolderById("--");
     
     // 递归获取文件夹中的所有 Sheet 文件
     function processFolder(folder) {
@@ -467,9 +467,10 @@ function testAlaSQLGS() {
  * @param {string} name - 模板名称
  * @param {string} description - 模板描述
  * @param {string} sql - SQL查询语句
+ * @param {string[]} validationRules - 验证规则数组
  * @returns {Object} - 保存结果
  */
-function saveSQLTemplate(name, description, sql) {
+function saveSQLTemplate(name, description, sql, validationRules = []) {
   try {
     const userProperties = PropertiesService.getUserProperties();
     const templatesStr = userProperties.getProperty('sql_templates') || '[]';
@@ -484,6 +485,7 @@ function saveSQLTemplate(name, description, sql) {
         name: name,
         description: description || '',
         sql: sql,
+        validationRules: validationRules || [], // 添加验证规则
         created: templates[existingIndex].created,
         updated: new Date().toISOString()
       };
@@ -493,6 +495,7 @@ function saveSQLTemplate(name, description, sql) {
         name: name,
         description: description || '',
         sql: sql,
+        validationRules: validationRules || [], // 添加验证规则
         created: new Date().toISOString(),
         updated: new Date().toISOString()
       });
@@ -569,8 +572,8 @@ function deleteSQLTemplate(name) {
   }
 }
 
-function saveSQLTemplateForClient(name, description, sql) {
-  return saveSQLTemplate(name, description, sql);
+function saveSQLTemplateForClient(name, description, sql, validationRules = []) {
+  return saveSQLTemplate(name, description, sql, validationRules);
 }
 
 function getSQLTemplatesForClient() {
@@ -615,4 +618,202 @@ function checkStorageUsage() {
     totalSize: new Blob([templatesStr]).size,
     limit: 50 * 1024  // 50 KB in bytes
   };
+}
+
+/**
+ * 执行 SQL 查询并应用验证规则的客户端接口
+ * @param {string} sql - SQL 查询语句
+ * @param {Object} params - 查询参数
+ * @param {string[]} validationRules - 验证规则数组
+ * @returns {Object} - 包含查询结果和验证信息的对象
+ */
+function executeSQLWithValidation(sql, params = {}, validationRules = []) {
+  // 预处理规则（去除空规则）
+  const rules = (validationRules || []).filter(rule => rule && rule.trim().length > 0);
+  
+  try {
+    // 执行原有的SQL查询
+    const result = executeSQL(sql, params);
+    
+    // 如果查询返回错误，直接返回
+    if (result.error) {
+      return result;
+    }
+    
+    // 验证结果对象
+    const validationResults = {
+      totalRows: Array.isArray(result.data) ? result.data.length : 0,
+      errorRows: 0,
+      errors: []
+    };
+    
+    // 如果有验证规则和有效数据，应用验证
+    if (rules.length > 0 && Array.isArray(result.data) && result.data.length > 0) {
+      // 处理每一行数据
+      result.data.forEach((row, rowIndex) => {
+        // 初始化验证状态
+        row._validationStatus = 'valid';
+        row._validationErrors = [];
+        
+        // 检查每条规则
+        rules.forEach((rule, ruleIndex) => {
+          const isValid = evaluateExpression(rule, row);
+          
+          if (!isValid) {
+            // 获取左右值用于错误消息
+            const parts = rule.split('=').map(p => p.trim());
+            let leftValue = '(未知)';
+            let rightValue = '(未知)';
+            
+            if (parts.length === 2) {
+              if (parts[0] in row) leftValue = JSON.stringify(row[parts[0]]);
+              if (parts[1] in row) rightValue = JSON.stringify(row[parts[1]]);
+            }
+            
+            // 标记不符合条件的行
+            row._validationStatus = 'invalid';
+            row._validationErrors.push({
+              rule: rule,
+              message: `规则 #${ruleIndex + 1} 验证失败: ${rule}
+                左侧值: ${leftValue}
+                右侧值: ${rightValue}`
+            });
+            
+            // 添加到错误汇总
+            validationResults.errors.push({
+              rowIndex: rowIndex,
+              rule: rule,
+              data: {...row}
+            });
+            
+            // 统计错误行数
+            if (row._validationStatus === 'invalid') {
+              validationResults.errorRows++;
+            }
+          }
+        });
+      });
+    }
+    
+    // 将验证结果添加到返回对象中
+    result.validation = validationResults;
+    
+    // 添加验证相关信息到统计中
+    if (result.stats) {
+      result.stats.sql = sql;
+      result.stats.validationRules = rules;
+    }
+    
+    return result;
+  } catch (e) {
+    Logger.log('验证规则执行错误: ' + e);
+    return { 
+      error: '执行验证规则失败: ' + e.toString(),
+      stats: {
+        executionTime: 0
+      }
+    };
+  }
+}
+
+/**
+ * 评估验证表达式
+ * @param {string} expression - 条件表达式，如 "col1 = col2"
+ * @param {Object} row - 数据行
+ * @returns {boolean} 表达式是否为真
+ */
+function evaluateExpression(expression, row) {
+  try {
+    // 记录详细日志，用于调试
+    Logger.log(`表达式: "${expression}"`);
+    
+    // 处理简单等式，如 "A=B"
+    if (expression.includes('=') && !expression.includes('!=') && 
+        !expression.includes('>=') && !expression.includes('<=')) {
+      // 切分等式
+      const parts = expression.split('=').map(p => p.trim());
+      if (parts.length === 2) {
+        const leftCol = parts[0];
+        const rightCol = parts[1];
+        
+        // 检查两边是否都是列名
+        if (leftCol in row && rightCol in row) {
+          const leftValue = row[leftCol];
+          const rightValue = row[rightCol];
+          
+          // 记录值用于调试
+          Logger.log(`比较: ${leftCol}=${JSON.stringify(leftValue)} 和 ${rightCol}=${JSON.stringify(rightValue)}`);
+          
+          // 处理不同类型的比较
+          if (typeof leftValue === 'number' && typeof rightValue === 'string') {
+            return leftValue == Number(rightValue);
+          } else if (typeof leftValue === 'string' && typeof rightValue === 'number') {
+            return Number(leftValue) == rightValue;
+          } else {
+            // 使用宽松比较（==）而不是严格比较（===）
+            return leftValue == rightValue;
+          }
+        }
+      }
+    }
+    
+    // 支持的操作符
+    const operators = {
+      '=': (a, b) => String(a) == String(b), // 转换为字符串比较
+      '==': (a, b) => String(a) == String(b),
+      '!=': (a, b) => String(a) != String(b),
+      '>': (a, b) => Number(a) > Number(b),  // 转换为数字比较
+      '>=': (a, b) => Number(a) >= Number(b),
+      '<': (a, b) => Number(a) < Number(b),
+      '<=': (a, b) => Number(a) <= Number(b)
+    };
+    
+    // 解析条件表达式
+    expression = expression.trim();
+    
+    // 处理复合表达式（含 AND/OR）
+    if (expression.includes(' AND ')) {
+      const conditions = expression.split(' AND ');
+      return conditions.every(cond => evaluateExpression(cond, row));
+    }
+    
+    if (expression.includes(' OR ')) {
+      const conditions = expression.split(' OR ');
+      return conditions.some(cond => evaluateExpression(cond, row));
+    }
+    
+    // 遍历所有操作符，尝试匹配
+    for (const op in operators) {
+      const regex = new RegExp(`\\s*${op}\\s*`);
+      if (expression.match(regex)) {
+        const parts = expression.split(regex).map(p => p.trim());
+        if (parts.length === 2) {
+          let leftValue = parts[0];
+          let rightValue = parts[1];
+          
+          // 检查是否是列名引用
+          if (leftValue in row) {
+            leftValue = row[leftValue];
+          }
+          
+          if (rightValue in row) {
+            rightValue = row[rightValue];
+          }
+          
+          // 记录实际比较的值
+          Logger.log(`使用操作符 ${op} 比较: ${JSON.stringify(leftValue)} 和 ${JSON.stringify(rightValue)}`);
+          
+          // 应用操作符函数
+          return operators[op](leftValue, rightValue);
+        }
+      }
+    }
+    
+    // 无法识别的表达式
+    Logger.log('无法识别的表达式: ' + expression);
+    return false;
+  } catch (e) {
+    Logger.log('表达式评估错误: ' + e);
+    return false;
+  }
 }

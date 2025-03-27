@@ -197,6 +197,34 @@
             white-space: pre-wrap;
             font-size: 0.9em;
         }
+        /* 验证相关样式 */
+        
+        .validation-controls {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .validation-error {
+            color: #dc3545;
+        }
+        
+        .validation-success {
+            color: #198754;
+        }
+        
+        .validation-summary {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        /* 添加悬停提示样式 */
+        
+        tr.table-danger:hover {
+            background-color: #f8d7da;
+            cursor: help;
+        }
     </style>
 </head>
 
@@ -278,102 +306,116 @@
                 <h4>SQL 查询</h4>
                 <div class="code-editor" id="editorContainer"></div>
 
-                <div class="d-flex justify-content-between mb-3">
-                    <div>
-                        <button class="btn btn-primary" onclick="executeQuery()">
+                <div class="mb-3">
+                    <label for="validationRules" class="form-label">验证规则</label>
+                    <textarea id="validationRules" class="form-control" rows="2" placeholder="输入验证规则，例如：列名1 = 列名2 或 列名 > 0"></textarea>
+                    <div class="form-text">每行一条规则，您可以使用比较运算符：=, !=, >, >=,
+                        <, <=</div>
+                    </div>
+
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="showErrorsOnly">
+                        <label class="form-check-label" for="showErrorsOnly">
+                        仅显示错误行
+                    </label>
+                    </div>
+
+                    <div class="d-flex justify-content-between mb-3">
+                        <div>
+                            <button class="btn btn-primary" onclick="executeQuery()">
                             <i class="bi bi-play-fill"></i> 执行查询
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="formatSQL()">
+                            <button class="btn btn-outline-secondary" onclick="formatSQL()">
                             <i class="bi bi-text-indent-left"></i> 格式化
                         </button>
-                    </div>
-                    <div>
-                        <button class="btn btn-outline-danger" onclick="clearResults()">
+                        </div>
+                        <div>
+                            <button class="btn btn-outline-danger" onclick="clearResults()">
                             <i class="bi bi-x-circle"></i> 清空结果
                         </button>
-                    </div>
-                </div>
-
-                <h4>查询结果 <span id="resultCount" class="badge bg-secondary"></span></h4>
-                <div id="loading" style="display: none;">
-                    <div class="spinner"></div> 执行查询中...
-                </div>
-
-                <div id="statsPanel" class="stats-panel" style="display: none;">
-                    <div>
-                        <div class="stats-item">
-                            <i class="bi bi-clock"></i> 总执行时间: <span id="executionTime">0</span> ms
                         </div>
-                        <div class="stats-item">
-                            <i class="bi bi-table"></i> 结果行数: <span id="rowCount">0</span>
-                        </div>
-                        <!-- 详细计时信息将动态添加到这里 -->
                     </div>
-                </div>
 
-                <div id="resultContainer" class="result-container">
-                    <div id="resultTable"></div>
+                    <h4>查询结果 <span id="resultCount" class="badge bg-secondary"></span></h4>
+                    <div id="loading" style="display: none;">
+                        <div class="spinner"></div> 执行查询中...
+                    </div>
+
+                    <div id="statsPanel" class="stats-panel" style="display: none;">
+                        <div>
+                            <div class="stats-item">
+                                <i class="bi bi-clock"></i> 总执行时间: <span id="executionTime">0</span> ms
+                            </div>
+                            <div class="stats-item">
+                                <i class="bi bi-table"></i> 结果行数: <span id="rowCount">0</span>
+                            </div>
+                            <!-- 详细计时信息将动态添加到这里 -->
+                        </div>
+                    </div>
+
+                    <div id="resultContainer" class="result-container">
+                        <div id="resultTable"></div>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/sql/sql.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/codemirror.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/mode/sql/sql.min.js"></script>
 
-    <script>
-        let editor;
-        let allSheets = [];
-        let sheetDataCache = {};
-        const QUERY_HISTORY_KEY = 'google_sheets_sql_history';
-        const MAX_HISTORY_ITEMS = 20;
+        <script>
+            let editor;
+            let allSheets = [];
+            let sheetDataCache = {};
+            const QUERY_HISTORY_KEY = 'google_sheets_sql_history';
+            const MAX_HISTORY_ITEMS = 20;
 
-        // 初始化编辑器
-        function initEditor() {
-            editor = CodeMirror(document.getElementById('editorContainer'), {
-                mode: 'text/x-sql',
-                theme: 'dracula',
-                lineNumbers: true,
-                indentWithTabs: true,
-                smartIndent: true,
-                lineWrapping: true,
-                extraKeys: {
-                    'Ctrl-Enter': executeQuery,
-                    'Cmd-Enter': executeQuery,
-                    'Ctrl-S': saveQuery,
-                    'Cmd-S': saveQuery
-                }
-            });
+            // 初始化编辑器
+            function initEditor() {
+                editor = CodeMirror(document.getElementById('editorContainer'), {
+                    mode: 'text/x-sql',
+                    theme: 'dracula',
+                    lineNumbers: true,
+                    indentWithTabs: true,
+                    smartIndent: true,
+                    lineWrapping: true,
+                    extraKeys: {
+                        'Ctrl-Enter': executeQuery,
+                        'Cmd-Enter': executeQuery,
+                        'Ctrl-S': saveQuery,
+                        'Cmd-S': saveQuery
+                    }
+                });
 
-            // 设置默认查询
-            editor.setValue("-- 在此输入 SQL 查询\n-- 例如: SELECT * FROM filename.sheetname LIMIT 10");
-        }
-
-        // 加载所有工作表
-        function loadSheets() {
-            document.getElementById('sheetList').innerHTML = '<div class="spinner"></div> 加载中...';
-
-            google.script.run
-                .withSuccessHandler(displaySheets)
-                .withFailureHandler(handleError)
-                .getAllSheetsForClient();
-        }
-
-        // 显示工作表列表
-        function displaySheets(sheets) {
-            allSheets = sheets;
-            const sheetListEl = document.getElementById('sheetList');
-
-            if (sheets.length === 0) {
-                sheetListEl.innerHTML = '<p>没有找到可访问的工作表</p>';
-                return;
+                // 设置默认查询
+                editor.setValue("-- 在此输入 SQL 查询\n-- 例如: SELECT * FROM filename.sheetname LIMIT 10");
             }
 
-            let html = '<div class="tree-view">';
+            // 加载所有工作表
+            function loadSheets() {
+                document.getElementById('sheetList').innerHTML = '<div class="spinner"></div> 加载中...';
 
-            sheets.forEach(sheet => {
-                html += `
+                google.script.run
+                    .withSuccessHandler(displaySheets)
+                    .withFailureHandler(handleError)
+                    .getAllSheetsForClient();
+            }
+
+            // 显示工作表列表
+            function displaySheets(sheets) {
+                allSheets = sheets;
+                const sheetListEl = document.getElementById('sheetList');
+
+                if (sheets.length === 0) {
+                    sheetListEl.innerHTML = '<p>没有找到可访问的工作表</p>';
+                    return;
+                }
+
+                let html = '<div class="tree-view">';
+
+                sheets.forEach(sheet => {
+                    html += `
           <div>
             <div class="sheet-name" onclick="toggleSheetDetails('${sheet.id}')">
               <i class="bi bi-file-earmark-spreadsheet"></i> ${sheet.name}
@@ -381,195 +423,255 @@
             <div id="sheet-${sheet.id}" class="tree-item" style="display:none;"></div>
           </div>
         `;
-            });
+                });
 
-            html += '</div>';
-            sheetListEl.innerHTML = html;
-        }
-
-        // 切换显示工作表详情
-        function toggleSheetDetails(fileId) {
-            const detailsElement = document.getElementById(`sheet-${fileId}`);
-
-            if (detailsElement.innerHTML === '') {
-                // 加载工作表详情
-                detailsElement.innerHTML = '<div class="spinner"></div> 加载中...';
-                detailsElement.style.display = 'block';
-
-                loadSheetDetails(fileId);
-            } else {
-                // 切换显示/隐藏
-                detailsElement.style.display = detailsElement.style.display === 'none' ? 'block' : 'none';
-            }
-        }
-
-        // 加载工作表详情
-        function loadSheetDetails(fileId) {
-            if (sheetDataCache[fileId]) {
-                displaySheetDetails(fileId, sheetDataCache[fileId]);
-                return;
+                html += '</div>';
+                sheetListEl.innerHTML = html;
             }
 
-            google.script.run
-                .withSuccessHandler(function(data) {
-                    sheetDataCache[fileId] = data;
-                    displaySheetDetails(fileId, data);
-                })
-                .withFailureHandler(handleError)
-                .getSheetMetadata(fileId);
-        }
+            // 切换显示工作表详情
+            function toggleSheetDetails(fileId) {
+                const detailsElement = document.getElementById(`sheet-${fileId}`);
 
-        // 显示工作表详情
-        function displaySheetDetails(fileId, data) {
-            const detailsElement = document.getElementById(`sheet-${fileId}`);
-            const sheetName = allSheets.find(s => s.id === fileId).name;
+                if (detailsElement.innerHTML === '') {
+                    // 加载工作表详情
+                    detailsElement.innerHTML = '<div class="spinner"></div> 加载中...';
+                    detailsElement.style.display = 'block';
 
-            if (!data || !data.sheets) {
-                detailsElement.innerHTML = '<p>无法获取工作表详情</p>';
-                return;
+                    loadSheetDetails(fileId);
+                } else {
+                    // 切换显示/隐藏
+                    detailsElement.style.display = detailsElement.style.display === 'none' ? 'block' : 'none';
+                }
             }
 
-            let html = '';
+            // 加载工作表详情
+            function loadSheetDetails(fileId) {
+                if (sheetDataCache[fileId]) {
+                    displaySheetDetails(fileId, sheetDataCache[fileId]);
+                    return;
+                }
 
-            // 显示工作表名称和第一个页签的表头
-            data.sheets.forEach((sheet, index) => {
-                html += `
+                google.script.run
+                    .withSuccessHandler(function(data) {
+                        sheetDataCache[fileId] = data;
+                        displaySheetDetails(fileId, data);
+                    })
+                    .withFailureHandler(handleError)
+                    .getSheetMetadata(fileId);
+            }
+
+            // 显示工作表详情
+            function displaySheetDetails(fileId, data) {
+                const detailsElement = document.getElementById(`sheet-${fileId}`);
+                const sheetName = allSheets.find(s => s.id === fileId).name;
+
+                if (!data || !data.sheets) {
+                    detailsElement.innerHTML = '<p>无法获取工作表详情</p>';
+                    return;
+                }
+
+                let html = '';
+
+                // 显示工作表名称和第一个页签的表头
+                data.sheets.forEach((sheet, index) => {
+                    html += `
                     <div>
                         <div class="worksheet-name" onclick="insertTableName('${sheetName}.${sheet.name}')">
                             ${sheet.name}
                         </div>`;
 
-                // 如果是第一个页签且有表头信息，显示表头
-                if (index === 0 && data.firstHeaders && data.firstHeaders.length > 0) {
-                    html += `
+                    // 如果是第一个页签且有表头信息，显示表头
+                    if (index === 0 && data.firstHeaders && data.firstHeaders.length > 0) {
+                        html += `
                         <div class="tree-item">
                             <small>列: ${data.firstHeaders.join(', ')}</small>
                         </div>`;
+                    }
+
+                    html += `</div>`;
+                });
+
+                detailsElement.innerHTML = html;
+            }
+
+            // 在编辑器中插入表名
+            function insertTableName(fullName) {
+                const cursorPos = editor.getCursor();
+                editor.replaceRange(fullName, cursorPos);
+                editor.focus();
+            }
+
+            // 执行查询
+            function executeQuery() {
+                const sql = editor.getValue().trim();
+                // 获取验证规则
+                const validationRulesText = document.getElementById('validationRules').value;
+                const validationRules = validationRulesText.split('\n').filter(line => line.trim());
+
+                if (!sql || sql.startsWith('--')) {
+                    alert('请输入有效的 SQL 查询');
+                    return;
                 }
 
-                html += `</div>`;
-            });
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('resultTable').innerHTML = '';
+                document.getElementById('resultCount').textContent = '';
+                document.getElementById('statsPanel').style.display = 'none';
 
-            detailsElement.innerHTML = html;
-        }
+                // 修改这里，将验证规则作为参数传递
+                google.script.run
+                    .withSuccessHandler(displayResults)
+                    .withFailureHandler(handleError)
+                    .executeSQLWithValidation(sql, {}, validationRules);
 
-        // 在编辑器中插入表名
-        function insertTableName(fullName) {
-            const cursorPos = editor.getCursor();
-            editor.replaceRange(fullName, cursorPos);
-            editor.focus();
-        }
-
-        // 执行查询
-        function executeQuery() {
-            const sql = editor.getValue().trim();
-
-            if (!sql || sql.startsWith('--')) {
-                alert('请输入有效的 SQL 查询');
-                return;
+                // 添加到查询历史
+                addToQueryHistory(sql);
             }
 
-            document.getElementById('loading').style.display = 'block';
-            document.getElementById('resultTable').innerHTML = '';
-            document.getElementById('resultCount').textContent = '';
-            document.getElementById('statsPanel').style.display = 'none';
+            // 显示查询结果
+            function displayResults(response) {
+                document.getElementById('loading').style.display = 'none';
 
-            google.script.run
-                .withSuccessHandler(displayResults)
-                .withFailureHandler(handleError)
-                .executeSQLForClient(sql, {});
+                // 处理有统计数据的响应格式
+                let results = response;
+                let stats = null;
+                let validation = null;
 
-            // 添加到查询历史
-            addToQueryHistory(sql);
-        }
+                if (response && response.data !== undefined && response.stats !== undefined) {
+                    results = response.data;
+                    stats = response.stats;
+                    validation = response.validation || null;
 
-        // 显示查询结果
-        function displayResults(response) {
-            document.getElementById('loading').style.display = 'none';
+                    // 显示统计信息
+                    displayStats(stats);
+                }
 
-            // 处理有统计数据的响应格式
-            let results = response;
-            let stats = null;
-
-            if (response && response.data !== undefined && response.stats !== undefined) {
-                results = response.data;
-                stats = response.stats;
-
-                // 显示统计信息
-                displayStats(stats);
-            }
-
-            if (results && results.error) {
-                document.getElementById('resultTable').innerHTML = `
+                if (results && results.error) {
+                    document.getElementById('resultTable').innerHTML = `
           <div class="alert alert-danger">
             <strong>错误:</strong> ${results.error}
           </div>
         `;
-                return;
-            }
+                    return;
+                }
 
-            if (!Array.isArray(results) || results.length === 0) {
-                document.getElementById('resultTable').innerHTML = '<p>查询没有返回结果</p>';
-                document.getElementById('resultCount').textContent = '0 条记录';
-                return;
-            }
+                if (!Array.isArray(results) || results.length === 0) {
+                    document.getElementById('resultTable').innerHTML = '<p>查询没有返回结果</p>';
+                    document.getElementById('resultCount').textContent = '0 条记录';
+                    return;
+                }
 
-            document.getElementById('resultCount').textContent = `${results.length} 条记录`;
+                // 显示验证结果摘要，如果有验证信息
+                if (validation) {
+                    const validationSummaryEl = document.getElementById('validationSummary') ||
+                        createValidationSummaryElement();
 
-            // 获取所有列
-            const columns = Object.keys(results[0]);
-
-            // 创建表格
-            let tableHtml = '<table class="table table-striped table-bordered result-table">';
-
-            // 表头
-            tableHtml += '<thead><tr>';
-            columns.forEach(column => {
-                tableHtml += `<th>${column}</th>`;
-            });
-            tableHtml += '</tr></thead>';
-
-            // 表体
-            tableHtml += '<tbody>';
-            results.forEach(row => {
-                tableHtml += '<tr>';
-                columns.forEach(column => {
-                    const value = row[column];
-                    let displayValue;
-
-                    if (value === null || value === undefined) {
-                        displayValue = '<em>null</em>';
-                    } else if (typeof value === 'object') {
-                        displayValue = JSON.stringify(value);
+                    if (validation.errorRows > 0) {
+                        validationSummaryEl.className = 'alert alert-danger mb-3';
+                        validationSummaryEl.innerHTML = `
+                          <strong>验证失败:</strong> ${validation.errorRows}/${validation.totalRows} 行不符合验证规则
+                        `;
                     } else {
-                        displayValue = value.toString();
+                        validationSummaryEl.className = 'alert alert-success mb-3';
+                        validationSummaryEl.innerHTML = `
+                          <strong>验证通过:</strong> 所有 ${validation.totalRows} 行数据都符合验证规则
+                        `;
                     }
 
-                    tableHtml += `<td>${displayValue}</td>`;
+                    validationSummaryEl.style.display = 'block';
+                }
+
+                // 检查是否仅显示错误行
+                const showErrorsOnly = document.getElementById('showErrorsOnly').checked;
+
+                document.getElementById('resultCount').textContent = `${results.length} 条记录`;
+
+                // 获取所有列
+                const columns = Object.keys(results[0]).filter(col => !col.startsWith('_validation'));
+
+                // 创建表格
+                let tableHtml = '<table class="table table-striped table-bordered result-table">';
+
+                // 表头
+                tableHtml += '<thead><tr>';
+                columns.forEach(column => {
+                    tableHtml += `<th>${column}</th>`;
                 });
-                tableHtml += '</tr>';
-            });
+                tableHtml += '</tr></thead>';
 
-            tableHtml += '</tbody></table>';
+                // 表体
+                tableHtml += '<tbody>';
+                results.forEach(row => {
+                    // 如果仅显示错误行且当前行有效，则跳过
+                    if (showErrorsOnly && row._validationStatus !== 'invalid') {
+                        return;
+                    }
 
-            document.getElementById('resultTable').innerHTML = tableHtml;
-        }
+                    // 设置行样式，错误行使用红色背景
+                    const rowClass = row._validationStatus === 'invalid' ? 'table-danger' : '';
+                    tableHtml += `<tr class="${rowClass}">`;
 
-        // 显示统计信息
-        function displayStats(stats) {
-            if (!stats) return;
+                    columns.forEach(column => {
+                        const value = row[column];
+                        let displayValue;
 
-            // 显示统计面板
-            document.getElementById('statsPanel').style.display = 'block';
+                        if (value === null || value === undefined) {
+                            displayValue = '<em>null</em>';
+                        } else if (typeof value === 'object') {
+                            displayValue = JSON.stringify(value);
+                        } else {
+                            displayValue = value.toString();
+                        }
 
-            // 显示基本统计信息
-            document.getElementById('rowCount').textContent = stats.rowCount || 0;
-            document.getElementById('executionTime').textContent = stats.executionTime || 0;
+                        tableHtml += `<td>${displayValue}</td>`;
+                    });
 
-            // 如果有详细的时间分解，创建更丰富的显示
-            if (stats.timings) {
-                // 创建或更新详细计时信息DOM元素
-                let detailsHtml = `
+                    // 如果行有错误，添加错误提示
+                    if (row._validationStatus === 'invalid' && row._validationErrors) {
+                        const errorMessages = row._validationErrors.map(e => e.message).join('<br>');
+                        tableHtml += `<td class="table-danger" title="${errorMessages}">
+                                        <i class="bi bi-exclamation-triangle-fill text-danger"></i>
+                                      </td>`;
+                    }
+
+                    tableHtml += '</tr>';
+                });
+
+                tableHtml += '</tbody></table>';
+
+                document.getElementById('resultTable').innerHTML = tableHtml;
+            }
+
+            // 创建验证摘要元素
+            function createValidationSummaryElement() {
+                const el = document.createElement('div');
+                el.id = 'validationSummary';
+                el.className = 'alert mb-3';
+                el.style.display = 'none';
+
+                // 插入到结果容器之前
+                const resultContainer = document.getElementById('resultContainer');
+                resultContainer.parentNode.insertBefore(el, resultContainer);
+
+                return el;
+            }
+
+            // 显示统计信息
+            function displayStats(stats) {
+                if (!stats) return;
+
+                // 显示统计面板
+                document.getElementById('statsPanel').style.display = 'block';
+
+                // 显示基本统计信息
+                document.getElementById('rowCount').textContent = stats.rowCount || 0;
+                document.getElementById('executionTime').textContent = stats.executionTime || 0;
+
+                // 如果有详细的时间分解，创建更丰富的显示
+                if (stats.timings) {
+                    // 创建或更新详细计时信息DOM元素
+                    let detailsHtml = `
                     <div class="mt-2">
                         <div class="stats-item"><i class="bi bi-hdd"></i> 表加载: ${stats.timings.tableLoading} ms</div>
                         <div class="stats-item"><i class="bi bi-lightning"></i> SQL执行: ${stats.timings.execution} ms</div>
@@ -578,458 +680,568 @@
                     </div>
                 `;
 
-                // 检查是否已存在详细计时元素
-                let detailsElement = document.getElementById('timingDetails');
-                if (!detailsElement) {
-                    // 如果不存在，创建新元素
-                    const detailsDiv = document.createElement('div');
-                    detailsDiv.id = 'timingDetails';
-                    detailsDiv.innerHTML = detailsHtml;
-                    document.getElementById('statsPanel').appendChild(detailsDiv);
-                } else {
-                    // 更新现有元素
-                    detailsElement.innerHTML = detailsHtml;
+                    // 检查是否已存在详细计时元素
+                    let detailsElement = document.getElementById('timingDetails');
+                    if (!detailsElement) {
+                        // 如果不存在，创建新元素
+                        const detailsDiv = document.createElement('div');
+                        detailsDiv.id = 'timingDetails';
+                        detailsDiv.innerHTML = detailsHtml;
+                        document.getElementById('statsPanel').appendChild(detailsDiv);
+                    } else {
+                        // 更新现有元素
+                        detailsElement.innerHTML = detailsHtml;
+                    }
+                }
+
+                // 如果有SQL显示
+                if (stats.sql) {
+                    // 可以选择是否显示原始SQL，这取决于您的需求
+                    console.log("执行的SQL: ", stats.sql);
                 }
             }
 
-            // 如果有SQL显示
-            if (stats.sql) {
-                // 可以选择是否显示原始SQL，这取决于您的需求
-                console.log("执行的SQL: ", stats.sql);
-            }
-        }
-
-        // 清空结果
-        function clearResults() {
-            document.getElementById('resultTable').innerHTML = '';
-            document.getElementById('resultCount').textContent = '';
-            document.getElementById('statsPanel').style.display = 'none';
-        }
-
-        // 格式化 SQL
-        function formatSQL() {
-            const sql = editor.getValue().trim();
-
-            if (!sql) {
-                return;
+            // 清空结果
+            function clearResults() {
+                document.getElementById('resultTable').innerHTML = '';
+                document.getElementById('resultCount').textContent = '';
+                document.getElementById('statsPanel').style.display = 'none';
             }
 
-            try {
-                // 简单的 SQL 格式化
-                let formatted = sql
-                    .replace(/\s+/g, ' ')
-                    .replace(/\s*,\s*/g, ', ')
-                    .replace(/\(\s+/g, '(')
-                    .replace(/\s+\)/g, ')')
-                    .replace(/\s+FROM/gi, '\nFROM')
-                    .replace(/\s+WHERE/gi, '\nWHERE')
-                    .replace(/\s+GROUP\s+BY/gi, '\nGROUP BY')
-                    .replace(/\s+HAVING/gi, '\nHAVING')
-                    .replace(/\s+ORDER\s+BY/gi, '\nORDER BY')
-                    .replace(/\s+LIMIT/gi, '\nLIMIT')
-                    .replace(/\s+JOIN/gi, '\nJOIN')
-                    .replace(/\s+LEFT\s+JOIN/gi, '\nLEFT JOIN')
-                    .replace(/\s+RIGHT\s+JOIN/gi, '\nRIGHT JOIN')
-                    .replace(/\s+INNER\s+JOIN/gi, '\nINNER JOIN')
-                    .replace(/\s+UNION/gi, '\nUNION');
+            // 格式化 SQL
+            function formatSQL() {
+                const sql = editor.getValue().trim();
 
-                editor.setValue(formatted);
-            } catch (e) {
-                // 忽略格式化错误
-                console.error('格式化 SQL 失败:', e);
-            }
-        }
-
-        // 查询历史相关
-        function loadQueryHistory() {
-            const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
-            displayQueryHistory(history);
-        }
-
-        function addToQueryHistory(sql) {
-            const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
-
-            // 添加新查询到历史
-            history.unshift({
-                sql: sql,
-                timestamp: new Date().toISOString()
-            });
-
-            // 保持历史记录数量在限制之内
-            while (history.length > MAX_HISTORY_ITEMS) {
-                history.pop();
-            }
-
-            // 保存到本地存储
-            localStorage.setItem(QUERY_HISTORY_KEY, JSON.stringify(history));
-
-            // 更新显示
-            displayQueryHistory(history);
-        }
-
-        function displayQueryHistory(history) {
-            const historyEl = document.getElementById('queryHistory');
-
-            if (!history || history.length === 0) {
-                historyEl.innerHTML = '<p>没有查询历史记录</p>';
-                return;
-            }
-
-            let html = '';
-
-            history.forEach((item, index) => {
-                // 格式化日期时间
-                const date = new Date(item.timestamp);
-                const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-
-                // 截断长查询
-                let displaySql = item.sql;
-                if (displaySql.length > 50) {
-                    displaySql = displaySql.substring(0, 50) + '...';
+                if (!sql) {
+                    return;
                 }
 
-                html += `
+                try {
+                    // 简单的 SQL 格式化
+                    let formatted = sql
+                        .replace(/\s+/g, ' ')
+                        .replace(/\s*,\s*/g, ', ')
+                        .replace(/\(\s+/g, '(')
+                        .replace(/\s+\)/g, ')')
+                        .replace(/\s+FROM/gi, '\nFROM')
+                        .replace(/\s+WHERE/gi, '\nWHERE')
+                        .replace(/\s+GROUP\s+BY/gi, '\nGROUP BY')
+                        .replace(/\s+HAVING/gi, '\nHAVING')
+                        .replace(/\s+ORDER\s+BY/gi, '\nORDER BY')
+                        .replace(/\s+LIMIT/gi, '\nLIMIT')
+                        .replace(/\s+JOIN/gi, '\nJOIN')
+                        .replace(/\s+LEFT\s+JOIN/gi, '\nLEFT JOIN')
+                        .replace(/\s+RIGHT\s+JOIN/gi, '\nRIGHT JOIN')
+                        .replace(/\s+INNER\s+JOIN/gi, '\nINNER JOIN')
+                        .replace(/\s+UNION/gi, '\nUNION');
+
+                    editor.setValue(formatted);
+                } catch (e) {
+                    // 忽略格式化错误
+                    console.error('格式化 SQL 失败:', e);
+                }
+            }
+
+            // 查询历史相关
+            function loadQueryHistory() {
+                const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
+                displayQueryHistory(history);
+            }
+
+            function addToQueryHistory(sql) {
+                const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
+
+                // 添加新查询到历史
+                history.unshift({
+                    sql: sql,
+                    timestamp: new Date().toISOString()
+                });
+
+                // 保持历史记录数量在限制之内
+                while (history.length > MAX_HISTORY_ITEMS) {
+                    history.pop();
+                }
+
+                // 保存到本地存储
+                localStorage.setItem(QUERY_HISTORY_KEY, JSON.stringify(history));
+
+                // 更新显示
+                displayQueryHistory(history);
+            }
+
+            function displayQueryHistory(history) {
+                const historyEl = document.getElementById('queryHistory');
+
+                if (!history || history.length === 0) {
+                    historyEl.innerHTML = '<p>没有查询历史记录</p>';
+                    return;
+                }
+
+                let html = '';
+
+                history.forEach((item, index) => {
+                    // 格式化日期时间
+                    const date = new Date(item.timestamp);
+                    const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+
+                    // 截断长查询
+                    let displaySql = item.sql;
+                    if (displaySql.length > 50) {
+                        displaySql = displaySql.substring(0, 50) + '...';
+                    }
+
+                    html += `
           <div class="query-history-item" onclick="loadHistoryQuery(${index})">
             <div class="history-query">${displaySql}</div>
             <div class="history-timestamp">${formattedDate}</div>
           </div>
         `;
-            });
-
-            historyEl.innerHTML = html;
-        }
-
-        function loadHistoryQuery(index) {
-            const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
-
-            if (history.length > index) {
-                editor.setValue(history[index].sql);
-                editor.focus();
-            }
-        }
-
-        function clearQueryHistory() {
-            if (confirm('确定要清空所有查询历史记录吗？')) {
-                localStorage.removeItem(QUERY_HISTORY_KEY);
-                document.getElementById('queryHistory').innerHTML = '<p>没有查询历史记录</p>';
-            }
-        }
-
-        // 保存查询（快捷键响应）
-        function saveQuery() {
-            const sql = editor.getValue().trim();
-
-            if (!sql) {
-                return;
-            }
-
-            // 简单地保存到历史记录中
-            addToQueryHistory(sql);
-
-            // 显示提示
-            alert('查询已保存到历史记录');
-
-            return false; // 阻止默认行为
-        }
-
-        // 设置示例查询
-        function setExampleQuery(example) {
-            let query = '';
-
-            switch (example) {
-                case 1:
-                    query = '-- 查询单个工作表\nSELECT * FROM filename.sheetname LIMIT 10';
-                    break;
-                case 2:
-                    query = '-- 联表查询\nSELECT a.*, b.column3\nFROM file1.sheet1 a\nJOIN file2.sheet2 b ON a.id = b.id\nWHERE a.column1 > 100\nORDER BY a.column2 DESC\nLIMIT 20';
-                    break;
-                case 3:
-                    query = '-- JSON 字段解析（假设有包含 JSON 的列）\nSELECT \n  id,\n  JSON_VALUE(jsonColumn, "$.name") AS name,\n  JSON_VALUE(jsonColumn, "$.address.city") AS city\nFROM filename.sheetname\nWHERE JSON_VALUE(jsonColumn, "$.age") > 30';
-                    break;
-                case 4:
-                    query = '-- 聚合查询\nSELECT \n  category,\n  COUNT(*) AS count,\n  SUM(amount) AS total,\n  AVG(amount) AS average\nFROM filename.sheetname\nGROUP BY category\nHAVING COUNT(*) > 5\nORDER BY total DESC';
-                    break;
-            }
-
-            editor.setValue(query);
-            editor.focus();
-        }
-
-        // 处理错误
-        function handleError(error) {
-            console.error(error);
-            alert('发生错误：' + error);
-        }
-
-        // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', function() {
-            initEditor();
-            loadSheets();
-
-            // 等待短暂延迟后初始化模态框，确保DOM完全加载
-            setTimeout(initModals, 500);
-
-            // 加载查询历史（当切换到对应标签页时）
-            const historyTabEl = document.getElementById('history-tab');
-            if (historyTabEl) {
-                historyTabEl.addEventListener('click', loadQueryHistory);
-            }
-
-            // 加载模板（当切换到对应标签页时）
-            const templatesTabEl = document.getElementById('templates-tab');
-            if (templatesTabEl) {
-                templatesTabEl.addEventListener('click', refreshTemplates);
-            }
-        });
-    </script>
-
-    <!-- 添加模板相关的 JavaScript 代码 -->
-    <script>
-        // 模板功能相关变量和函数
-        let templateModalInstance;
-        let paramsModalInstance;
-        let currentTemplateWithParams;
-
-        // 初始化模态框函数
-        function initModals() {
-            const templateModalEl = document.getElementById('templateModal');
-            const paramsModalEl = document.getElementById('paramsModal');
-
-            if (templateModalEl && paramsModalEl) {
-                templateModalInstance = new bootstrap.Modal(templateModalEl);
-                paramsModalInstance = new bootstrap.Modal(paramsModalEl);
-                console.log('模态框初始化成功');
-            } else {
-                console.error('模态框元素未找到', {
-                    templateModalEl,
-                    paramsModalEl
                 });
-            }
-        }
 
-        // 打开保存模板对话框
-        function saveTemplateModal() {
-            const sql = editor.getValue().trim();
-
-            if (!sql || sql.startsWith('--')) {
-                alert('请先输入有效的 SQL 查询');
-                return;
+                historyEl.innerHTML = html;
             }
 
-            // 确保元素存在再设置值
-            const templateNameEl = document.getElementById('templateName');
-            const templateDescEl = document.getElementById('templateDescription');
-            const previewSqlEl = document.getElementById('previewSql');
+            function loadHistoryQuery(index) {
+                const history = JSON.parse(localStorage.getItem(QUERY_HISTORY_KEY) || '[]');
 
-            if (!templateNameEl || !templateDescEl || !previewSqlEl) {
-                console.error('模板表单元素未找到', {
-                    templateNameEl,
-                    templateDescEl,
-                    previewSqlEl
-                });
-                alert('表单加载错误，请刷新页面重试');
-                return;
-            }
-
-            templateNameEl.value = '';
-            templateDescEl.value = '';
-            previewSqlEl.textContent = sql;
-
-            if (!templateModalInstance) {
-                console.error('模态框实例未初始化');
-                initModals(); // 尝试重新初始化
-            }
-
-            if (templateModalInstance) {
-                templateModalInstance.show();
-            } else {
-                alert('无法显示模板表单，请刷新页面重试');
-            }
-        }
-
-        // 刷新模板列表
-        function refreshTemplates() {
-            const templateListEl = document.getElementById('templateList');
-            templateListEl.innerHTML = '<div class="spinner"></div> 加载中...';
-
-            google.script.run
-                .withSuccessHandler(displayTemplates)
-                .withFailureHandler(handleError)
-                .getSQLTemplatesForClient();
-        }
-
-        // 显示模板列表
-        function displayTemplates(templates) {
-            const templateListEl = document.getElementById('templateList');
-
-            if (!templates || templates.length === 0) {
-                templateListEl.innerHTML = '<p>没有保存的模板</p>';
-                return;
-            }
-
-            let html = '';
-
-            templates.forEach(template => {
-                const date = new Date(template.updated);
-                const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-
-                html += `
-                    <div class="query-history-item">
-                        <div class="d-flex justify-content-between">
-                            <strong class="template-name" onclick="loadTemplate('${template.name}')">${template.name}</strong>
-                            <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteTemplate('${template.name}')">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </div>
-                        <div class="small text-muted">${template.description || '无描述'}</div>
-                        <div class="history-timestamp">更新于: ${formattedDate}</div>
-                    </div>
-                `;
-            });
-
-            templateListEl.innerHTML = html;
-        }
-
-        // 保存模板
-        function saveTemplate() {
-            const name = document.getElementById('templateName').value.trim();
-            const description = document.getElementById('templateDescription').value.trim();
-            const sql = editor.getValue().trim();
-
-            if (!name) {
-                alert('请输入模板名称');
-                return;
-            }
-
-            if (!sql) {
-                alert('SQL 查询不能为空');
-                return;
-            }
-
-            google.script.run
-                .withSuccessHandler(function(result) {
-                    if (result.success) {
-                        templateModalInstance.hide();
-                        alert(result.message);
-                        refreshTemplates();
-                    } else {
-                        alert('保存失败: ' + (result.error || '未知错误'));
-                    }
-                })
-                .withFailureHandler(handleError)
-                .saveSQLTemplateForClient(name, description, sql);
-        }
-
-        // 加载模板
-        function loadTemplate(name) {
-            google.script.run
-                .withSuccessHandler(function(templates) {
-                    const template = templates.find(t => t.name === name);
-
-                    if (!template) {
-                        alert('找不到模板: ' + name);
-                        return;
-                    }
-
-                    // 检查模板中的参数
-                    const params = extractTemplateParams(template.sql);
-
-                    if (params.length > 0) {
-                        // 有参数，显示参数输入对话框
-                        showParamsInput(template, params);
-                    } else {
-                        // 无参数，直接应用模板
-                        editor.setValue(template.sql);
-                        editor.focus();
-                    }
-                })
-                .withFailureHandler(handleError)
-                .getSQLTemplatesForClient();
-        }
-
-        // 提取模板中的参数
-        function extractTemplateParams(sql) {
-            const regex = /\{\{([^}]+)\}\}/g;
-            const params = [];
-            let match;
-
-            while ((match = regex.exec(sql)) !== null) {
-                if (!params.includes(match[1])) {
-                    params.push(match[1]);
+                if (history.length > index) {
+                    editor.setValue(history[index].sql);
+                    editor.focus();
                 }
             }
 
-            return params;
-        }
+            function clearQueryHistory() {
+                if (confirm('确定要清空所有查询历史记录吗？')) {
+                    localStorage.removeItem(QUERY_HISTORY_KEY);
+                    document.getElementById('queryHistory').innerHTML = '<p>没有查询历史记录</p>';
+                }
+            }
 
-        // 显示参数输入对话框
-        function showParamsInput(template, params) {
-            const paramsFormEl = document.getElementById('paramsForm');
-            let html = '<div class="mb-2">请输入以下参数值:</div>';
+            // 保存查询（快捷键响应）
+            function saveQuery() {
+                const sql = editor.getValue().trim();
 
-            params.forEach(param => {
-                html += `
+                if (!sql) {
+                    return;
+                }
+
+                // 简单地保存到历史记录中
+                addToQueryHistory(sql);
+
+                // 显示提示
+                alert('查询已保存到历史记录');
+
+                return false; // 阻止默认行为
+            }
+
+            // 设置示例查询
+            function setExampleQuery(example) {
+                let query = '';
+
+                switch (example) {
+                    case 1:
+                        query = '-- 查询单个工作表\nSELECT * FROM filename.sheetname LIMIT 10';
+                        break;
+                    case 2:
+                        query = '-- 联表查询\nSELECT a.*, b.column3\nFROM file1.sheet1 a\nJOIN file2.sheet2 b ON a.id = b.id\nWHERE a.column1 > 100\nORDER BY a.column2 DESC\nLIMIT 20';
+                        break;
+                    case 3:
+                        query = '-- JSON 字段解析（假设有包含 JSON 的列）\nSELECT \n  id,\n  JSON_VALUE(jsonColumn, "$.name") AS name,\n  JSON_VALUE(jsonColumn, "$.address.city") AS city\nFROM filename.sheetname\nWHERE JSON_VALUE(jsonColumn, "$.age") > 30';
+                        break;
+                    case 4:
+                        query = '-- 聚合查询\nSELECT \n  category,\n  COUNT(*) AS count,\n  SUM(amount) AS total,\n  AVG(amount) AS average\nFROM filename.sheetname\nGROUP BY category\nHAVING COUNT(*) > 5\nORDER BY total DESC';
+                        break;
+                }
+
+                editor.setValue(query);
+                editor.focus();
+            }
+
+            // 处理错误
+            function handleError(error) {
+                console.error(error);
+                alert('发生错误：' + error);
+            }
+
+            // 页面加载完成后初始化
+            document.addEventListener('DOMContentLoaded', function() {
+                initEditor();
+                loadSheets();
+
+                // 等待短暂延迟后初始化模态框，确保DOM完全加载
+                setTimeout(initModals, 500);
+
+                // 加载查询历史（当切换到对应标签页时）
+                const historyTabEl = document.getElementById('history-tab');
+                if (historyTabEl) {
+                    historyTabEl.addEventListener('click', loadQueryHistory);
+                }
+
+                // 加载模板（当切换到对应标签页时）
+                const templatesTabEl = document.getElementById('templates-tab');
+                if (templatesTabEl) {
+                    templatesTabEl.addEventListener('click', refreshTemplates);
+                }
+            });
+        </script>
+
+        <!-- 添加模板相关的 JavaScript 代码 -->
+        <script>
+            // 模板功能相关变量和函数
+            let templateModalInstance;
+            let paramsModalInstance;
+            let currentTemplateWithParams;
+
+            // 初始化模态框函数
+            function initModals() {
+                const templateModalEl = document.getElementById('templateModal');
+                const paramsModalEl = document.getElementById('paramsModal');
+
+                if (templateModalEl && paramsModalEl) {
+                    templateModalInstance = new bootstrap.Modal(templateModalEl);
+                    paramsModalInstance = new bootstrap.Modal(paramsModalEl);
+                    console.log('模态框初始化成功');
+                } else {
+                    console.error('模态框元素未找到', {
+                        templateModalEl,
+                        paramsModalEl
+                    });
+                }
+            }
+
+            // 打开保存模板对话框
+            function saveTemplateModal() {
+                const sql = editor.getValue().trim();
+
+                if (!sql || sql.startsWith('--')) {
+                    alert('请先输入有效的 SQL 查询');
+                    return;
+                }
+
+                // 确保元素存在再设置值
+                const templateNameEl = document.getElementById('templateName');
+                const templateDescEl = document.getElementById('templateDescription');
+                const previewSqlEl = document.getElementById('previewSql');
+                const validationRulesEl = document.getElementById('templateValidationRules');
+
+                if (!templateNameEl || !templateDescEl || !previewSqlEl || !validationRulesEl) {
+                    console.error('模板表单元素未找到');
+                    alert('表单加载错误，请刷新页面重试');
+                    return;
+                }
+
+                templateNameEl.value = '';
+                templateDescEl.value = '';
+                previewSqlEl.textContent = sql;
+
+                // 设置当前验证规则
+                const currentValidationRules = document.getElementById('validationRules').value;
+                validationRulesEl.value = currentValidationRules;
+
+                if (!templateModalInstance) {
+                    console.error('模态框实例未初始化');
+                    initModals(); // 尝试重新初始化
+                }
+
+                if (templateModalInstance) {
+                    templateModalInstance.show();
+                } else {
+                    alert('无法显示模板表单，请刷新页面重试');
+                }
+            }
+
+            // 刷新模板列表
+            function refreshTemplates() {
+                const templateListEl = document.getElementById('templateList');
+                templateListEl.innerHTML = '<div class="spinner"></div> 加载中...';
+
+                google.script.run
+                    .withSuccessHandler(displayTemplates)
+                    .withFailureHandler(handleError)
+                    .getSQLTemplatesForClient();
+            }
+
+            // 显示模板列表
+            function displayTemplates(templates) {
+                const templateListEl = document.getElementById('templateList');
+
+                if (!templates || templates.length === 0) {
+                    templateListEl.innerHTML = '<p>没有保存的模板</p>';
+                    return;
+                }
+
+                let html = '';
+
+                templates.forEach(template => {
+                    const date = new Date(template.updated);
+                    const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+
+                    // 显示是否有验证规则的标识
+                    const hasValidation = template.validationRules &&
+                        template.validationRules.length > 0;
+                    const validationBadge = hasValidation ?
+                        '<span class="badge bg-info ms-2" title="包含验证规则">验证</span>' : '';
+
+                    html += `
+                        <div class="query-history-item">
+                            <div class="d-flex justify-content-between">
+                                <strong class="template-name" onclick="loadTemplate('${template.name}')">
+                                    ${template.name} ${validationBadge}
+                                </strong>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-info py-0 me-1" onclick="viewTemplateDetails('${template.name}')">
+                                        <i class="bi bi-info-circle"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteTemplate('${template.name}')">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="small text-muted">${template.description || '无描述'}</div>
+                            <div class="history-timestamp">更新于: ${formattedDate}</div>
+                        </div>
+                    `;
+                });
+
+                templateListEl.innerHTML = html;
+            }
+
+            // 保存模板
+            function saveTemplate() {
+                const name = document.getElementById('templateName').value.trim();
+                const description = document.getElementById('templateDescription').value.trim();
+                const sql = editor.getValue().trim();
+
+                // 新增：获取验证规则
+                const validationRulesText = document.getElementById('templateValidationRules').value;
+                const validationRules = validationRulesText.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+
+                if (!name) {
+                    alert('请输入模板名称');
+                    return;
+                }
+
+                if (!sql) {
+                    alert('SQL 查询不能为空');
+                    return;
+                }
+
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            templateModalInstance.hide();
+                            alert(result.message);
+                            refreshTemplates();
+                        } else {
+                            alert('保存失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .saveSQLTemplateForClient(name, description, sql, validationRules);
+            }
+
+            // 加载模板
+            function loadTemplate(name) {
+                google.script.run
+                    .withSuccessHandler(function(templates) {
+                        const template = templates.find(t => t.name === name);
+
+                        if (!template) {
+                            alert('找不到模板: ' + name);
+                            return;
+                        }
+
+                        // 检查模板中的参数
+                        const params = extractTemplateParams(template.sql);
+
+                        if (params.length > 0) {
+                            // 有参数，显示参数输入对话框
+                            showParamsInput(template, params);
+                        } else {
+                            // 无参数，直接应用模板
+                            applyTemplate(template);
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .getSQLTemplatesForClient();
+            }
+
+            // 提取模板中的参数
+            function extractTemplateParams(sql) {
+                const regex = /\{\{([^}]+)\}\}/g;
+                const params = [];
+                let match;
+
+                while ((match = regex.exec(sql)) !== null) {
+                    if (!params.includes(match[1])) {
+                        params.push(match[1]);
+                    }
+                }
+
+                return params;
+            }
+
+            // 显示参数输入对话框
+            function showParamsInput(template, params) {
+                const paramsFormEl = document.getElementById('paramsForm');
+                let html = '<div class="mb-2">请输入以下参数值:</div>';
+
+                params.forEach(param => {
+                    html += `
                     <div class="mb-3">
                         <label class="form-label">${param}</label>
                         <input type="text" class="form-control param-input" data-param="${param}" placeholder="输入 ${param} 的值">
                     </div>
                 `;
-            });
+                });
 
-            paramsFormEl.innerHTML = html;
-            currentTemplateWithParams = template;
-            paramsModalInstance.show();
-        }
+                paramsFormEl.innerHTML = html;
+                currentTemplateWithParams = template;
+                paramsModalInstance.show();
+            }
 
-        // 应用带参数的模板
-        function applyTemplateWithParams() {
-            const inputs = document.querySelectorAll('.param-input');
-            const params = {};
+            // 应用带参数的模板
+            function applyTemplateWithParams() {
+                const inputs = document.querySelectorAll('.param-input');
+                const params = {};
 
-            // 收集参数值
-            inputs.forEach(input => {
-                const param = input.getAttribute('data-param');
-                params[param] = input.value;
-            });
+                // 收集参数值
+                inputs.forEach(input => {
+                    const param = input.getAttribute('data-param');
+                    params[param] = input.value;
+                });
 
-            // 替换模板中的参数
-            let sql = currentTemplateWithParams.sql;
+                // 替换模板中的参数
+                let sql = currentTemplateWithParams.sql;
 
-            Object.keys(params).forEach(param => {
-                const regex = new RegExp('\\{\\{' + param + '\\}\\}', 'g');
-                sql = sql.replace(regex, params[param]);
-            });
+                Object.keys(params).forEach(param => {
+                    const regex = new RegExp('\\{\\{' + param + '\\}\\}', 'g');
+                    sql = sql.replace(regex, params[param]);
+                });
 
-            // 应用到编辑器
-            editor.setValue(sql);
-            editor.focus();
+                // 应用到编辑器
+                editor.setValue(sql);
 
-            paramsModalInstance.hide();
-        }
+                // 设置验证规则（如果有）
+                if (currentTemplateWithParams.validationRules &&
+                    currentTemplateWithParams.validationRules.length > 0) {
+                    const rulesText = currentTemplateWithParams.validationRules.join('\n');
+                    document.getElementById('validationRules').value = rulesText;
+                }
 
-        // 删除模板
-        function deleteTemplate(name) {
-            if (confirm(`确定要删除模板 "${name}" 吗？`)) {
+                editor.focus();
+                paramsModalInstance.hide();
+            }
+
+            // 删除模板
+            function deleteTemplate(name) {
+                if (confirm(`确定要删除模板 "${name}" 吗？`)) {
+                    google.script.run
+                        .withSuccessHandler(function(result) {
+                            if (result.success) {
+                                alert('模板已删除');
+                                refreshTemplates();
+                            } else {
+                                alert('删除失败: ' + (result.error || '未知错误'));
+                            }
+                        })
+                        .withFailureHandler(handleError)
+                        .deleteSQLTemplateForClient(name);
+                }
+            }
+
+            // 新增函数：应用模板（包括验证规则）
+            function applyTemplate(template) {
+                // 设置 SQL 查询
+                editor.setValue(template.sql);
+
+                // 如果模板有验证规则，设置验证规则
+                if (template.validationRules && template.validationRules.length > 0) {
+                    const rulesText = template.validationRules.join('\n');
+                    document.getElementById('validationRules').value = rulesText;
+                }
+
+                editor.focus();
+            }
+
+            // 添加一个查看模板详情的功能
+            function viewTemplateDetails(name) {
                 google.script.run
-                    .withSuccessHandler(function(result) {
-                        if (result.success) {
-                            alert('模板已删除');
-                            refreshTemplates();
+                    .withSuccessHandler(function(templates) {
+                            const template = templates.find(t => t.name === name);
+
+                            if (!template) {
+                                alert('找不到模板: ' + name);
+                                return;
+                            }
+
+                            // 创建或获取模板详情模态框
+                            let detailsModal = document.getElementById('templateDetailsModal');
+                            if (!detailsModal) {
+                                const modalHtml = `
+                                <div class="modal fade" id="templateDetailsModal" tabindex="-1" aria-hidden="true">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">模板详情</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                            </div>
+                                            <div class="modal-body" id="templateDetailsContent">
+                                                <!-- 内容将动态填充 -->
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                                                <button type="button" class="btn btn-primary" onclick="loadTemplate('${name}')">使用此模板</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                                document.body.insertAdjacentHTML('beforeend', modalHtml);
+                                detailsModal = document.getElementById('templateDetailsModal');
+                            }
+
+                            // 填充模板详情
+                            const contentEl = document.getElementById('templateDetailsContent');
+                            let html = `
+                            <h4>${template.name}</h4>
+                            <p>${template.description || '无描述'}</p>
+                            
+                            <h5>SQL 查询</h5>
+                            <pre class="p-2 bg-light border rounded">${template.sql}</pre>
+                        `;
+
+                            // 添加验证规则部分
+                            if (template.validationRules && template.validationRules.length > 0) {
+                                html += `
+                                <h5>验证规则</h5>
+                                <ul class="list-group">
+                                    ${template.validationRules.map(rule => 
+                                        `<li class="list-group-item">${rule}</li>`).join('')}
+                                </ul>
+                            `;
                         } else {
-                            alert('删除失败: ' + (result.error || '未知错误'));
+                            html += `<p class="text-muted">此模板没有验证规则</p>`;
                         }
+                        
+                        contentEl.innerHTML = html;
+                        
+                        // 显示模态框
+                        const bsModal = new bootstrap.Modal(detailsModal);
+                        bsModal.show();
                     })
                     .withFailureHandler(handleError)
-                    .deleteSQLTemplateForClient(name);
+                    .getSQLTemplatesForClient();
             }
-        }
-    </script>
+        </script>
 
-    <!-- 动态创建模态框 -->
-    <script>
-        function createModals() {
-            // 创建模板模态框
-            const templateModalHtml = `
+        <!-- 动态创建模态框 -->
+        <script>
+            function createModals() {
+                // 创建模板模态框
+                const templateModalHtml = `
                 <div class="modal fade" id="templateModal" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
                         <div class="modal-content">
@@ -1051,6 +1263,12 @@
                                         <label class="form-label">SQL 查询</label>
                                         <pre id="previewSql" class="p-2 bg-light border rounded"></pre>
                                     </div>
+                                    <div class="mb-3">
+                                        <label for="templateValidationRules" class="form-label">验证规则 (可选)</label>
+                                        <textarea class="form-control" id="templateValidationRules" rows="3" 
+                                                  placeholder="每行一条规则，如：列名1 = 列名2"></textarea>
+                                        <div class="form-text">用于检查查询结果的正确性，例如：id = ref_id</div>
+                                    </div>
                                 </form>
                             </div>
                             <div class="modal-footer">
@@ -1062,10 +1280,10 @@
                 </div>
             `;
 
-            document.body.insertAdjacentHTML('beforeend', templateModalHtml);
+                document.body.insertAdjacentHTML('beforeend', templateModalHtml);
 
-            // 创建参数模态框
-            const paramsModalHtml = `
+                // 创建参数模态框
+                const paramsModalHtml = `
                 <div class="modal fade" id="paramsModal" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog">
                         <div class="modal-content">
@@ -1087,18 +1305,18 @@
                 </div>
             `;
 
-            document.body.insertAdjacentHTML('beforeend', paramsModalHtml);
+                document.body.insertAdjacentHTML('beforeend', paramsModalHtml);
 
-            // 初始化模态框
-            setTimeout(initModals, 100);
-        }
+                // 初始化模态框
+                setTimeout(initModals, 100);
+            }
 
-        // 在加载时调用
-        document.addEventListener('DOMContentLoaded', function() {
-            createModals();
-            // ...其他初始化
-        });
-    </script>
+            // 在加载时调用
+            document.addEventListener('DOMContentLoaded', function() {
+                createModals();
+                // ...其他初始化
+            });
+        </script>
 </body>
 
 </html>
