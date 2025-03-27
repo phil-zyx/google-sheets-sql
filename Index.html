@@ -181,6 +181,22 @@
                 height: 300px;
             }
         }
+        
+        .template-name {
+            cursor: pointer;
+            color: #0d6efd;
+        }
+        
+        .template-name:hover {
+            text-decoration: underline;
+        }
+        
+        #previewSql {
+            max-height: 200px;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 
@@ -206,6 +222,11 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-panel" type="button" role="tab">
+                            模板
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history-panel" type="button" role="tab">
                             历史记录
                         </button>
@@ -227,6 +248,18 @@
                             <div class="example-query" onclick="setExampleQuery(2)">联表查询</div>
                             <div class="example-query" onclick="setExampleQuery(3)">JSON 字段解析</div>
                             <div class="example-query" onclick="setExampleQuery(4)">聚合查询</div>
+                        </div>
+                    </div>
+
+                    <!-- 模板面板 -->
+                    <div class="tab-pane fade" id="templates-panel" role="tabpanel">
+                        <h5>SQL 模板</h5>
+                        <div id="templateList" class="sheet-list">
+                            <p>没有保存的模板</p>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <button class="btn btn-sm btn-primary" onclick="saveTemplateModal()">保存当前查询为模板</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="refreshTemplates()">刷新</button>
                         </div>
                     </div>
 
@@ -729,13 +762,342 @@
         }
 
         // 页面加载完成后初始化
-        window.onload = function() {
+        document.addEventListener('DOMContentLoaded', function() {
             initEditor();
             loadSheets();
 
+            // 等待短暂延迟后初始化模态框，确保DOM完全加载
+            setTimeout(initModals, 500);
+
             // 加载查询历史（当切换到对应标签页时）
-            document.getElementById('history-tab').addEventListener('click', loadQueryHistory);
-        };
+            const historyTabEl = document.getElementById('history-tab');
+            if (historyTabEl) {
+                historyTabEl.addEventListener('click', loadQueryHistory);
+            }
+
+            // 加载模板（当切换到对应标签页时）
+            const templatesTabEl = document.getElementById('templates-tab');
+            if (templatesTabEl) {
+                templatesTabEl.addEventListener('click', refreshTemplates);
+            }
+        });
+    </script>
+
+    <!-- 添加模板相关的 JavaScript 代码 -->
+    <script>
+        // 模板功能相关变量和函数
+        let templateModalInstance;
+        let paramsModalInstance;
+        let currentTemplateWithParams;
+
+        // 初始化模态框函数
+        function initModals() {
+            const templateModalEl = document.getElementById('templateModal');
+            const paramsModalEl = document.getElementById('paramsModal');
+
+            if (templateModalEl && paramsModalEl) {
+                templateModalInstance = new bootstrap.Modal(templateModalEl);
+                paramsModalInstance = new bootstrap.Modal(paramsModalEl);
+                console.log('模态框初始化成功');
+            } else {
+                console.error('模态框元素未找到', {
+                    templateModalEl,
+                    paramsModalEl
+                });
+            }
+        }
+
+        // 打开保存模板对话框
+        function saveTemplateModal() {
+            const sql = editor.getValue().trim();
+
+            if (!sql || sql.startsWith('--')) {
+                alert('请先输入有效的 SQL 查询');
+                return;
+            }
+
+            // 确保元素存在再设置值
+            const templateNameEl = document.getElementById('templateName');
+            const templateDescEl = document.getElementById('templateDescription');
+            const previewSqlEl = document.getElementById('previewSql');
+
+            if (!templateNameEl || !templateDescEl || !previewSqlEl) {
+                console.error('模板表单元素未找到', {
+                    templateNameEl,
+                    templateDescEl,
+                    previewSqlEl
+                });
+                alert('表单加载错误，请刷新页面重试');
+                return;
+            }
+
+            templateNameEl.value = '';
+            templateDescEl.value = '';
+            previewSqlEl.textContent = sql;
+
+            if (!templateModalInstance) {
+                console.error('模态框实例未初始化');
+                initModals(); // 尝试重新初始化
+            }
+
+            if (templateModalInstance) {
+                templateModalInstance.show();
+            } else {
+                alert('无法显示模板表单，请刷新页面重试');
+            }
+        }
+
+        // 刷新模板列表
+        function refreshTemplates() {
+            const templateListEl = document.getElementById('templateList');
+            templateListEl.innerHTML = '<div class="spinner"></div> 加载中...';
+
+            google.script.run
+                .withSuccessHandler(displayTemplates)
+                .withFailureHandler(handleError)
+                .getSQLTemplatesForClient();
+        }
+
+        // 显示模板列表
+        function displayTemplates(templates) {
+            const templateListEl = document.getElementById('templateList');
+
+            if (!templates || templates.length === 0) {
+                templateListEl.innerHTML = '<p>没有保存的模板</p>';
+                return;
+            }
+
+            let html = '';
+
+            templates.forEach(template => {
+                const date = new Date(template.updated);
+                const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+
+                html += `
+                    <div class="query-history-item">
+                        <div class="d-flex justify-content-between">
+                            <strong class="template-name" onclick="loadTemplate('${template.name}')">${template.name}</strong>
+                            <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteTemplate('${template.name}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                        <div class="small text-muted">${template.description || '无描述'}</div>
+                        <div class="history-timestamp">更新于: ${formattedDate}</div>
+                    </div>
+                `;
+            });
+
+            templateListEl.innerHTML = html;
+        }
+
+        // 保存模板
+        function saveTemplate() {
+            const name = document.getElementById('templateName').value.trim();
+            const description = document.getElementById('templateDescription').value.trim();
+            const sql = editor.getValue().trim();
+
+            if (!name) {
+                alert('请输入模板名称');
+                return;
+            }
+
+            if (!sql) {
+                alert('SQL 查询不能为空');
+                return;
+            }
+
+            google.script.run
+                .withSuccessHandler(function(result) {
+                    if (result.success) {
+                        templateModalInstance.hide();
+                        alert(result.message);
+                        refreshTemplates();
+                    } else {
+                        alert('保存失败: ' + (result.error || '未知错误'));
+                    }
+                })
+                .withFailureHandler(handleError)
+                .saveSQLTemplateForClient(name, description, sql);
+        }
+
+        // 加载模板
+        function loadTemplate(name) {
+            google.script.run
+                .withSuccessHandler(function(templates) {
+                    const template = templates.find(t => t.name === name);
+
+                    if (!template) {
+                        alert('找不到模板: ' + name);
+                        return;
+                    }
+
+                    // 检查模板中的参数
+                    const params = extractTemplateParams(template.sql);
+
+                    if (params.length > 0) {
+                        // 有参数，显示参数输入对话框
+                        showParamsInput(template, params);
+                    } else {
+                        // 无参数，直接应用模板
+                        editor.setValue(template.sql);
+                        editor.focus();
+                    }
+                })
+                .withFailureHandler(handleError)
+                .getSQLTemplatesForClient();
+        }
+
+        // 提取模板中的参数
+        function extractTemplateParams(sql) {
+            const regex = /\{\{([^}]+)\}\}/g;
+            const params = [];
+            let match;
+
+            while ((match = regex.exec(sql)) !== null) {
+                if (!params.includes(match[1])) {
+                    params.push(match[1]);
+                }
+            }
+
+            return params;
+        }
+
+        // 显示参数输入对话框
+        function showParamsInput(template, params) {
+            const paramsFormEl = document.getElementById('paramsForm');
+            let html = '<div class="mb-2">请输入以下参数值:</div>';
+
+            params.forEach(param => {
+                html += `
+                    <div class="mb-3">
+                        <label class="form-label">${param}</label>
+                        <input type="text" class="form-control param-input" data-param="${param}" placeholder="输入 ${param} 的值">
+                    </div>
+                `;
+            });
+
+            paramsFormEl.innerHTML = html;
+            currentTemplateWithParams = template;
+            paramsModalInstance.show();
+        }
+
+        // 应用带参数的模板
+        function applyTemplateWithParams() {
+            const inputs = document.querySelectorAll('.param-input');
+            const params = {};
+
+            // 收集参数值
+            inputs.forEach(input => {
+                const param = input.getAttribute('data-param');
+                params[param] = input.value;
+            });
+
+            // 替换模板中的参数
+            let sql = currentTemplateWithParams.sql;
+
+            Object.keys(params).forEach(param => {
+                const regex = new RegExp('\\{\\{' + param + '\\}\\}', 'g');
+                sql = sql.replace(regex, params[param]);
+            });
+
+            // 应用到编辑器
+            editor.setValue(sql);
+            editor.focus();
+
+            paramsModalInstance.hide();
+        }
+
+        // 删除模板
+        function deleteTemplate(name) {
+            if (confirm(`确定要删除模板 "${name}" 吗？`)) {
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            alert('模板已删除');
+                            refreshTemplates();
+                        } else {
+                            alert('删除失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .deleteSQLTemplateForClient(name);
+            }
+        }
+    </script>
+
+    <!-- 动态创建模态框 -->
+    <script>
+        function createModals() {
+            // 创建模板模态框
+            const templateModalHtml = `
+                <div class="modal fade" id="templateModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">保存 SQL 模板</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <form id="templateForm">
+                                    <div class="mb-3">
+                                        <label for="templateName" class="form-label">模板名称</label>
+                                        <input type="text" class="form-control" id="templateName" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label for="templateDescription" class="form-label">描述 (可选)</label>
+                                        <textarea class="form-control" id="templateDescription" rows="2"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">SQL 查询</label>
+                                        <pre id="previewSql" class="p-2 bg-light border rounded"></pre>
+                                    </div>
+                                </form>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-primary" onclick="saveTemplate()">保存</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', templateModalHtml);
+
+            // 创建参数模态框
+            const paramsModalHtml = `
+                <div class="modal fade" id="paramsModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">输入模板参数</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div id="paramsForm">
+                                    <!-- 参数输入字段将在这里动态生成 -->
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-primary" onclick="applyTemplateWithParams()">应用</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.body.insertAdjacentHTML('beforeend', paramsModalHtml);
+
+            // 初始化模态框
+            setTimeout(initModals, 100);
+        }
+
+        // 在加载时调用
+        document.addEventListener('DOMContentLoaded', function() {
+            createModals();
+            // ...其他初始化
+        });
     </script>
 </body>
 

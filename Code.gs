@@ -461,3 +461,158 @@ function testAlaSQLGS() {
     };
   }
 }
+
+/**
+ * 保存SQL模板
+ * @param {string} name - 模板名称
+ * @param {string} description - 模板描述
+ * @param {string} sql - SQL查询语句
+ * @returns {Object} - 保存结果
+ */
+function saveSQLTemplate(name, description, sql) {
+  try {
+    const userProperties = PropertiesService.getUserProperties();
+    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    const templates = JSON.parse(templatesStr);
+    
+    // 检查是否存在同名模板
+    const existingIndex = templates.findIndex(t => t.name === name);
+    
+    if (existingIndex >= 0) {
+      // 更新现有模板
+      templates[existingIndex] = {
+        name: name,
+        description: description || '',
+        sql: sql,
+        created: templates[existingIndex].created,
+        updated: new Date().toISOString()
+      };
+    } else {
+      // 添加新模板
+      templates.push({
+        name: name,
+        description: description || '',
+        sql: sql,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString()
+      });
+    }
+    
+    // 保存回 Properties
+    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    
+    return {
+      success: true,
+      message: existingIndex >= 0 ? '模板已更新' : '模板已保存',
+      template: templates[existingIndex >= 0 ? existingIndex : templates.length - 1]
+    };
+  } catch (e) {
+    Logger.log('保存SQL模板失败: ' + e);
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+/**
+ * 获取所有SQL模板
+ * @returns {Object[]} - 模板列表
+ */
+function getSQLTemplates() {
+  try {
+    const userProperties = PropertiesService.getUserProperties();
+    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    return JSON.parse(templatesStr);
+  } catch (e) {
+    Logger.log('获取SQL模板失败: ' + e);
+    return [];
+  }
+}
+
+/**
+ * 删除SQL模板
+ * @param {string} name - 模板名称
+ * @returns {Object} - 删除结果
+ */
+function deleteSQLTemplate(name) {
+  try {
+    const userProperties = PropertiesService.getUserProperties();
+    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    let templates = JSON.parse(templatesStr);
+    
+    // 查找并删除模板
+    const initialLength = templates.length;
+    templates = templates.filter(t => t.name !== name);
+    
+    // 如果长度没有变化，说明没有找到模板
+    if (templates.length === initialLength) {
+      return {
+        success: false,
+        error: '模板不存在'
+      };
+    }
+    
+    // 保存回 Properties
+    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    
+    return {
+      success: true,
+      message: '模板已删除'
+    };
+  } catch (e) {
+    Logger.log('删除SQL模板失败: ' + e);
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+function saveSQLTemplateForClient(name, description, sql) {
+  return saveSQLTemplate(name, description, sql);
+}
+
+function getSQLTemplatesForClient() {
+  return getSQLTemplates();
+}
+
+function deleteSQLTemplateForClient(name) {
+  return deleteSQLTemplate(name);
+}
+
+// 添加导出和导入功能，允许用户备份模板
+function exportSQLTemplates() {
+  const templates = getSQLTemplates();
+  return JSON.stringify(templates);
+}
+
+function importSQLTemplates(jsonData) {
+  try {
+    const templates = JSON.parse(jsonData);
+    const userProperties = PropertiesService.getUserProperties();
+    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    return {
+      success: true,
+      message: `已导入 ${templates.length} 个模板`
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: '导入失败: ' + e.toString()
+    };
+  }
+}
+
+// 检查存储使用情况
+function checkStorageUsage() {
+  const userProperties = PropertiesService.getUserProperties();
+  const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+  
+  return {
+    templatesCount: JSON.parse(templatesStr).length,
+    templatesSize: templatesStr.length,
+    totalSize: new Blob([templatesStr]).size,
+    limit: 50 * 1024  // 50 KB in bytes
+  };
+}
