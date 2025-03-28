@@ -225,6 +225,41 @@
             background-color: #f8d7da;
             cursor: help;
         }
+        
+        .public-template-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .public-template-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .public-template-card .template-name {
+            color: #0d6efd;
+            cursor: pointer;
+        }
+        
+        .public-template-card .template-name:hover {
+            text-decoration: underline;
+        }
+        
+        .rating-stars {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        
+        .btn-outline-warning:not(.active):hover {
+            background-color: transparent;
+            color: #ffc107;
+        }
+        
+        .btn-check:checked+.btn-outline-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #000;
+        }
     </style>
 </head>
 
@@ -246,12 +281,12 @@
                 <ul class="nav nav-tabs" id="sidebarTabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="sheets-tab" data-bs-toggle="tab" data-bs-target="#sheets-panel" type="button" role="tab">
-                            工作表
+                            配置表
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-panel" type="button" role="tab">
-                            模板
+                            个人模板
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
@@ -298,6 +333,18 @@
                             <p>没有查询历史记录</p>
                         </div>
                         <button class="btn btn-sm btn-outline-secondary mt-2" onclick="clearQueryHistory()">清空历史记录</button>
+                    </div>
+
+                    <!-- 公共模板面板 -->
+                    <div class="tab-pane fade" id="public-templates-panel" role="tabpanel">
+                        <h5>公共模板库</h5>
+                        <div id="publicTemplateList" class="sheet-list">
+                            <p>点击加载公共模板...</p>
+                        </div>
+                        <div class="d-flex justify-content-between mt-2">
+                            <button class="btn btn-sm btn-primary" onclick="submitPublicTemplateModal()">贡献模板</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="loadPublicTemplates()">刷新</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -509,10 +556,10 @@
                 const validationRulesText = document.getElementById('validationRules').value;
                 const validationRules = validationRulesText.split('\n').filter(line => line.trim());
 
-                if (!sql || sql.startsWith('--')) {
-                    alert('请输入有效的 SQL 查询');
-                    return;
-                }
+                // if (!sql || sql.startsWith('--')) {
+                //     alert('请输入有效的 SQL 查询');
+                //     return;
+                // }
 
                 document.getElementById('loading').style.display = 'block';
                 document.getElementById('resultTable').innerHTML = '';
@@ -882,6 +929,9 @@
                 if (templatesTabEl) {
                     templatesTabEl.addEventListener('click', refreshTemplates);
                 }
+
+                // 初始化公共模板功能
+                initPublicTemplatesFeature();
             });
         </script>
 
@@ -913,10 +963,10 @@
             function saveTemplateModal() {
                 const sql = editor.getValue().trim();
 
-                if (!sql || sql.startsWith('--')) {
-                    alert('请先输入有效的 SQL 查询');
-                    return;
-                }
+                // if (!sql || sql.startsWith('--')) {
+                //     alert('请先输入有效的 SQL 查询');
+                //     return;
+                // }
 
                 // 确保元素存在再设置值
                 const templateNameEl = document.getElementById('templateName');
@@ -1317,6 +1367,562 @@
                 // ...其他初始化
             });
         </script>
+
+        <!-- 添加公共模板相关的 JavaScript 代码 -->
+        <script>
+            // 公共模板系统相关功能
+
+            // 初始化公共模板功能
+            function initPublicTemplatesFeature() {
+                // 添加公共模板标签和面板
+                updateTabsForPublicTemplates();
+
+                // 创建相关模态框
+                createPublicTemplateModals();
+            }
+
+            // 在侧边栏导航中添加公共模板标签
+            function updateTabsForPublicTemplates() {
+                const sidebarTabs = document.getElementById('sidebarTabs');
+                if (sidebarTabs) {
+                    // 创建公共模板标签
+                    const publicTemplatesTab = document.createElement('li');
+                    publicTemplatesTab.className = 'nav-item';
+                    publicTemplatesTab.role = 'presentation';
+                    publicTemplatesTab.innerHTML = `
+                      <button class="nav-link" id="public-templates-tab" data-bs-toggle="tab" 
+                              data-bs-target="#public-templates-panel" type="button" role="tab">
+                        公共模板
+                      </button>
+                    `;
+
+                    // 将新标签添加到导航栏
+                    sidebarTabs.appendChild(publicTemplatesTab);
+
+                    // 创建公共模板内容区域
+                    const sidebarContent = document.getElementById('sidebarContent');
+                    const publicTemplatesPanel = document.createElement('div');
+                    publicTemplatesPanel.className = 'tab-pane fade';
+                    publicTemplatesPanel.id = 'public-templates-panel';
+                    publicTemplatesPanel.role = 'tabpanel';
+                    publicTemplatesPanel.innerHTML = `
+                      <h5>公共模板库</h5>
+                      <div id="publicTemplateList" class="sheet-list">
+                        <p>点击加载公共模板...</p>
+                      </div>
+                      <div class="d-flex justify-content-between mt-2">
+                        <button class="btn btn-sm btn-primary" onclick="submitPublicTemplateModal()">贡献模板</button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="loadPublicTemplates()">刷新</button>
+                      </div>
+                    `;
+
+                    sidebarContent.appendChild(publicTemplatesPanel);
+
+                    // 添加点击事件处理函数
+                    document.getElementById('public-templates-tab').addEventListener('click', loadPublicTemplates);
+                }
+            }
+
+            // 创建所有公共模板相关的模态框
+            function createPublicTemplateModals() {
+                // 创建贡献模板模态框
+                const submitModalHtml = `
+                  <div class="modal fade" id="submitPublicTemplateModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">贡献模板到公共库</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                          <form id="submitPublicTemplateForm">
+                            <div class="mb-3">
+                              <label for="publicTemplateName" class="form-label">模板名称</label>
+                              <input type="text" class="form-control" id="publicTemplateName" required>
+                            </div>
+                            <div class="mb-3">
+                              <label for="publicTemplateDescription" class="form-label">描述</label>
+                              <textarea class="form-control" id="publicTemplateDescription" rows="2"></textarea>
+                            </div>
+                            <div class="mb-3">
+                              <label for="publicTemplateCategory" class="form-label">分类标签 (可选，用逗号分隔)</label>
+                              <input type="text" class="form-control" id="publicTemplateCategory" placeholder="例如: 财务,报表,数据分析">
+                            </div>
+                            <div class="mb-3">
+                              <label class="form-label">SQL 查询</label>
+                              <pre id="publicPreviewSql" class="p-2 bg-light border rounded"></pre>
+                            </div>
+                            <div class="mb-3">
+                              <label for="publicTemplateValidationRules" class="form-label">验证规则 (可选)</label>
+                              <textarea class="form-control" id="publicTemplateValidationRules" rows="3" 
+                                        placeholder="每行一条规则，如：列名1 = 列名2"></textarea>
+                            </div>
+                            <div class="form-text mb-3">
+                              <i class="bi bi-info-circle"></i> 提交的模板将先经过审核，审核通过后才会公开显示。
+                            </div>
+                          </form>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                          <button type="button" class="btn btn-primary" onclick="submitPublicTemplate()">提交</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+
+                // 创建模板详情模态框
+                const detailsModalHtml = `
+                  <div class="modal fade" id="publicTemplateDetailsModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">公共模板详情</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                          <h4 id="publicTemplateName"></h4>
+                          <p id="publicTemplateDescription"></p>
+                          
+                          <div class="row">
+                            <div class="col-md-8">
+                              <h5>SQL 查询</h5>
+                              <pre id="publicTemplateSQL" class="p-2 bg-light border rounded" style="max-height: 200px; overflow: auto;"></pre>
+                              
+                              <h5>验证规则</h5>
+                              <div id="publicTemplateRules"></div>
+                            </div>
+                            <div class="col-md-4">
+                              <h5>模板信息</h5>
+                              <div id="publicTemplateMetadata" class="small"></div>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-outline-primary" id="submitFeedbackBtn">
+                            <i class="bi bi-star"></i> 提交反馈
+                          </button>
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                          <button type="button" class="btn btn-success me-1" id="usePublicTemplateBtn">
+                            <i class="bi bi-play-fill"></i> 直接使用
+                          </button>
+                          <button type="button" class="btn btn-primary" id="importPublicTemplateBtn">
+                            <i class="bi bi-box-arrow-in-down"></i> 导入到个人模板
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+
+                // 创建反馈模态框
+                const feedbackModalHtml = `
+                  <div class="modal fade" id="templateFeedbackModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <div class="modal-header">
+                          <h5 class="modal-title">提交模板反馈</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                          <form id="templateFeedbackForm">
+                            <input type="hidden" id="feedbackTemplateId">
+                            <div class="mb-3">
+                              <label class="form-label">评分</label>
+                              <div class="rating-stars">
+                                <div class="btn-group" role="group">
+                                  <input type="radio" class="btn-check" name="templateRating" id="rating1" value="1" autocomplete="off">
+                                  <label class="btn btn-outline-warning" for="rating1"><i class="bi bi-star-fill"></i></label>
+                                  
+                                  <input type="radio" class="btn-check" name="templateRating" id="rating2" value="2" autocomplete="off">
+                                  <label class="btn btn-outline-warning" for="rating2"><i class="bi bi-star-fill"></i></label>
+                                  
+                                  <input type="radio" class="btn-check" name="templateRating" id="rating3" value="3" autocomplete="off" checked>
+                                  <label class="btn btn-outline-warning" for="rating3"><i class="bi bi-star-fill"></i></label>
+                                  
+                                  <input type="radio" class="btn-check" name="templateRating" id="rating4" value="4" autocomplete="off">
+                                  <label class="btn btn-outline-warning" for="rating4"><i class="bi bi-star-fill"></i></label>
+                                  
+                                  <input type="radio" class="btn-check" name="templateRating" id="rating5" value="5" autocomplete="off">
+                                  <label class="btn btn-outline-warning" for="rating5"><i class="bi bi-star-fill"></i></label>
+                                </div>
+                              </div>
+                            </div>
+                            <div class="mb-3">
+                              <label for="templateFeedbackComment" class="form-label">评论 (可选)</label>
+                              <textarea class="form-control" id="templateFeedbackComment" rows="3" 
+                                        placeholder="请分享您对此模板的看法..."></textarea>
+                            </div>
+                          </form>
+                        </div>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                          <button type="button" class="btn btn-primary" onclick="submitFeedback()">提交反馈</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                `;
+
+                // 添加所有模态框到页面
+                document.body.insertAdjacentHTML('beforeend', submitModalHtml);
+                document.body.insertAdjacentHTML('beforeend', detailsModalHtml);
+                document.body.insertAdjacentHTML('beforeend', feedbackModalHtml);
+            }
+
+            // 加载公共模板
+            function loadPublicTemplates() {
+                const publicTemplateListEl = document.getElementById('publicTemplateList');
+                publicTemplateListEl.innerHTML = '<div class="spinner"></div> 加载中...';
+
+                google.script.run
+                    .withSuccessHandler(displayPublicTemplates)
+                    .withFailureHandler(handleError)
+                    .getPublicTemplatesForClient();
+            }
+
+            // 显示公共模板
+            function displayPublicTemplates(templates) {
+                const publicTemplateListEl = document.getElementById('publicTemplateList');
+
+                if (!templates || templates.error) {
+                    publicTemplateListEl.innerHTML = `<p>获取公共模板失败: ${templates.error || '未知错误'}</p>`;
+                    return;
+                }
+
+                if (templates.length === 0) {
+                    publicTemplateListEl.innerHTML = '<p>暂无公共模板</p>';
+                    return;
+                }
+
+                let html = '';
+
+                // 添加分类筛选
+                const categories = [...new Set(templates.flatMap(t => t.tags))].filter(Boolean);
+                if (categories.length > 0) {
+                    html += `
+                      <div class="mb-3">
+                        <label class="form-label">按分类筛选:</label>
+                        <select class="form-select form-select-sm" id="categoryFilter" onchange="filterPublicTemplates()">
+                          <option value="">全部</option>
+                          ${categories.map(cat => `<option value="${cat}">${cat}</option>`).join('')}
+                        </select>
+                      </div>
+                    `;
+                }
+                
+                html += '<div id="filteredTemplates">';
+                
+                // 模板列表
+                templates.forEach(template => {
+                    const date = new Date(template.updated);
+                    const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+                    
+                    // 显示标签
+                    const tagsHtml = template.tags && template.tags.length > 0 
+                        ? template.tags.map(tag => `<span class="badge bg-secondary me-1">${tag}</span>`).join('')
+                        : '';
+                    
+                    // 显示是否有验证规则
+                    const hasValidation = template.validationRules && template.validationRules.length > 0;
+                    const validationBadge = hasValidation
+                        ? '<span class="badge bg-info ms-1" title="包含验证规则">验证</span>'
+                        : '';
+                    
+                    html += `
+                      <div class="card mb-2 public-template-card" data-tags="${template.tags.join(',')}">
+                        <div class="card-body p-2">
+                          <div class="d-flex justify-content-between align-items-center">
+                            <h6 class="card-title mb-1">
+                              <span class="template-name" onclick="viewPublicTemplateDetails('${template.id}')">
+                                ${template.name} ${validationBadge}
+                              </span>
+                            </h6>
+                            <div>
+                              <button class="btn btn-sm btn-outline-success me-1" onclick="usePublicTemplateDirectly('${template.id}')">
+                                <i class="bi bi-play-fill"></i> 直接使用
+                              </button>
+                              <button class="btn btn-sm btn-outline-primary" onclick="importPublicTemplate('${template.id}')">
+                                <i class="bi bi-box-arrow-in-down"></i> 导入
+                              </button>
+                            </div>
+                          </div>
+                          <p class="card-text small mb-1">${template.description || '无描述'}</p>
+                          <div class="d-flex justify-content-between align-items-center small text-muted">
+                            <div>贡献者: ${template.contributor.split('@')[0]}</div>
+                            <div>使用次数: ${template.usageCount}</div>
+                          </div>
+                          <div class="mt-1">
+                            ${tagsHtml}
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                });
+                
+                html += '</div>';
+                
+                publicTemplateListEl.innerHTML = html;
+            }
+            
+            // 筛选公共模板
+            function filterPublicTemplates() {
+                const categorySelect = document.getElementById('categoryFilter');
+                if (!categorySelect) return;
+                
+                const selectedCategory = categorySelect.value;
+                const templateCards = document.querySelectorAll('.public-template-card');
+                
+                templateCards.forEach(card => {
+                    const cardTags = card.getAttribute('data-tags').split(',');
+                    if (!selectedCategory || cardTags.includes(selectedCategory)) {
+                        card.style.display = 'block';
+                    } else {
+                        card.style.display = 'none';
+                    }
+                });
+            }
+            
+            // 打开提交模板模态框
+            function submitPublicTemplateModal() {
+                const sql = editor.getValue().trim();
+                
+                // if (!sql || sql.startsWith('--')) {
+                //     alert('请先输入有效的 SQL 查询');
+                //     return;
+                // }
+                
+                // 填充表单
+                document.getElementById('publicTemplateName').value = '';
+                document.getElementById('publicTemplateDescription').value = '';
+                document.getElementById('publicTemplateCategory').value = '';
+                document.getElementById('publicPreviewSql').textContent = sql;
+                
+                // 设置当前验证规则
+                const currentValidationRules = document.getElementById('validationRules').value;
+                document.getElementById('publicTemplateValidationRules').value = currentValidationRules;
+                
+                // 显示模态框
+                const modal = new bootstrap.Modal(document.getElementById('submitPublicTemplateModal'));
+                modal.show();
+            }
+            
+            // 提交模板到公共库
+            function submitPublicTemplate() {
+                const name = document.getElementById('publicTemplateName').value.trim();
+                const description = document.getElementById('publicTemplateDescription').value.trim();
+                const category = document.getElementById('publicTemplateCategory').value.trim();
+                const sql = editor.getValue().trim();
+                
+                // 获取验证规则
+                const validationRulesText = document.getElementById('publicTemplateValidationRules').value;
+                const validationRules = validationRulesText.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                
+                if (!name) {
+                    alert('请输入模板名称');
+                    return;
+                }
+                
+                if (!sql) {
+                    alert('SQL 查询不能为空');
+                    return;
+                }
+                
+                // 处理分类标签
+                const categories = category.split(',').map(c => c.trim()).filter(Boolean);
+                
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            bootstrap.Modal.getInstance(document.getElementById('submitPublicTemplateModal')).hide();
+                            alert(result.message);
+                            loadPublicTemplates(); // 刷新公共模板列表
+                        } else {
+                            alert('提交失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .submitPublicTemplateForClient(name, description, sql, validationRules, categories.join(','));
+            }
+            
+            // 导入公共模板
+            function importPublicTemplate(templateId) {
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            alert(result.message);
+                            refreshTemplates(); // 刷新个人模板列表
+                        } else {
+                            alert('导入失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .importPublicTemplateForClient(templateId);
+            }
+            
+            // 查看公共模板详情
+            function viewPublicTemplateDetails(templateId) {
+                google.script.run
+                    .withSuccessHandler(function(templates) {
+                        if (!templates || templates.error) {
+                            alert('获取模板详情失败: ' + (templates.error || '未知错误'));
+                            return;
+                        }
+                        
+                        const template = templates.find(t => t.id === templateId);
+                        if (!template) {
+                            alert('找不到指定的模板');
+                            return;
+                        }
+                        
+                        // 填充模板详情
+                        document.getElementById('publicTemplateName').textContent = template.name;
+                        document.getElementById('publicTemplateDescription').textContent = template.description || '无描述';
+                        document.getElementById('publicTemplateSQL').textContent = template.sql;
+                        
+                        // 显示验证规则
+                        const rulesEl = document.getElementById('publicTemplateRules');
+                        if (template.validationRules && template.validationRules.length > 0) {
+                            let rulesHtml = '<ul class="list-group">';
+                            template.validationRules.forEach(rule => {
+                                rulesHtml += `<li class="list-group-item">${rule}</li>`;
+                            });
+                            rulesHtml += '</ul>';
+                            rulesEl.innerHTML = rulesHtml;
+                        } else {
+                            rulesEl.innerHTML = '<p class="text-muted">此模板没有验证规则</p>';
+                        }
+                        
+                        // 显示模板元数据
+                        document.getElementById('publicTemplateMetadata').innerHTML = `
+                          <div><strong>贡献者:</strong> ${template.contributor}</div>
+                          <div><strong>创建时间:</strong> ${new Date(template.created).toLocaleString()}</div>
+                          <div><strong>更新时间:</strong> ${new Date(template.updated).toLocaleString()}</div>
+                          <div><strong>使用次数:</strong> ${template.usageCount}</div>
+                        `;
+                        
+                        // 设置直接使用按钮的事件处理
+                        document.getElementById('usePublicTemplateBtn').onclick = function() {
+                            usePublicTemplateDirectly(templateId);
+                            bootstrap.Modal.getInstance(document.getElementById('publicTemplateDetailsModal')).hide();
+                        };
+                        
+                        // 设置导入按钮的事件处理
+                        document.getElementById('importPublicTemplateBtn').onclick = function() {
+                            importPublicTemplate(templateId);
+                            bootstrap.Modal.getInstance(document.getElementById('publicTemplateDetailsModal')).hide();
+                        };
+                        
+                        // 设置反馈按钮的事件处理
+                        document.getElementById('submitFeedbackBtn').onclick = function() {
+                            showTemplateFeedbackModal(templateId);
+                        };
+                        
+                        // 显示模态框
+                        const modal = new bootstrap.Modal(document.getElementById('publicTemplateDetailsModal'));
+                        modal.show();
+                    })
+                    .withFailureHandler(handleError)
+                    .getPublicTemplatesForClient();
+            }
+            
+            // 显示模板反馈模态框
+            function showTemplateFeedbackModal(templateId) {
+                // 隐藏当前的详情模态框
+                bootstrap.Modal.getInstance(document.getElementById('publicTemplateDetailsModal')).hide();
+                
+                // 设置模板ID
+                document.getElementById('feedbackTemplateId').value = templateId;
+                
+                // 重置表单
+                document.getElementById('templateFeedbackComment').value = '';
+                document.getElementById('rating3').checked = true; // 默认3星
+                
+                // 显示反馈模态框
+                const modal = new bootstrap.Modal(document.getElementById('templateFeedbackModal'));
+                modal.show();
+            }
+            
+            // 提交模板反馈
+            function submitFeedback() {
+                const templateId = document.getElementById('feedbackTemplateId').value;
+                const comment = document.getElementById('templateFeedbackComment').value.trim();
+                
+                // 获取评分
+                let rating = 3; // 默认值
+                const ratingInputs = document.querySelectorAll('input[name="templateRating"]');
+                for (const input of ratingInputs) {
+                    if (input.checked) {
+                        rating = parseInt(input.value);
+                        break;
+                    }
+                }
+                
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            bootstrap.Modal.getInstance(document.getElementById('templateFeedbackModal')).hide();
+                            alert(result.message);
+                        } else {
+                            alert('提交反馈失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .submitTemplateFeedbackForClient(templateId, rating, comment);
+            }
+
+            // 添加直接使用公共模板的函数
+            function usePublicTemplateDirectly(templateId) {
+                google.script.run
+                    .withSuccessHandler(function(templates) {
+                        if (!templates || templates.error) {
+                            alert('获取模板详情失败: ' + (templates.error || '未知错误'));
+                            return;
+                        }
+                        
+                        const template = templates.find(t => t.id === templateId);
+                        if (!template) {
+                            alert('找不到指定的模板');
+                            return;
+                        }
+                        
+                        // 检查模板中的参数
+                        const params = extractTemplateParams(template.sql);
+                        
+                        if (params.length > 0) {
+                            // 有参数，显示参数输入对话框
+                            currentTemplateWithParams = template;
+                            showParamsInput(template, params);
+                        } else {
+                            // 无参数，直接应用模板
+                            applyTemplate(template);
+                        }
+                        
+                        // 增加使用计数（可选）
+                        incrementTemplateUsageCount(templateId);
+                    })
+                    .withFailureHandler(handleError)
+                    .getPublicTemplatesForClient();
+            }
+
+            // 增加模板使用计数的辅助函数
+            function incrementTemplateUsageCount(templateId) {
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        // 静默更新，不需要用户反馈
+                        if (result && result.success) {
+                            console.log('模板使用计数已更新');
+                        }
+                    })
+                    .withFailureHandler(function(error) {
+                        console.error('更新模板使用计数失败:', error);
+                    })
+                    .incrementTemplateUsageForClient(templateId);
+            }
+        </script>
+    </div>
 </body>
 
 </html>

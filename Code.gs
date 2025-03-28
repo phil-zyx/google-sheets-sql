@@ -59,7 +59,8 @@ function initAlaSQL() {
 function getAllSheets() {
   try {
     const result = [];
-    const rootFolder = DriveApp.getFolderById("18fRVYlkXD7hhfQbeYhePDd-upXPF5EyJ");
+    const config = getConfig();
+    const rootFolder = DriveApp.getFolderById(config.drive.rootFolderId);
     
     // 递归获取文件夹中的所有 Sheet 文件
     function processFolder(folder) {
@@ -166,6 +167,12 @@ function executeSQL(sql, params = {}) {
       if (!alasql || typeof alasql !== 'function') {
         throw new Error('AlaSQL 初始化后仍然无效');
       }
+    }
+    
+    // 处理SQL注释，保留SQL语句
+    if (sql.includes('--')) {
+      // 移除单行注释 (--后面的内容直到行尾)
+      sql = sql.replace(/--.*?(\r\n|\r|\n|$)/g, ' ');
     }
     
     // 记录不同阶段的时间统计
@@ -360,10 +367,12 @@ function doGet(e) {
       .setTitle('Google Sheets SQL - 帮助文档');
   }
   
+  const config = getConfig();
+  
   // 返回主页面
   return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Google Sheets SQL')
-    .setFaviconUrl('https://www.google.com/images/favicon.ico');
+    .setTitle(config.app.name)
+    .setFaviconUrl(config.app.faviconUrl);
 }
 
 // 暴露给前端的 API 函数
@@ -472,8 +481,9 @@ function testAlaSQLGS() {
  */
 function saveSQLTemplate(name, description, sql, validationRules = []) {
   try {
+    const config = getConfig();
     const userProperties = PropertiesService.getUserProperties();
-    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    const templatesStr = userProperties.getProperty(config.app.userPropertiesKey) || '[]';
     const templates = JSON.parse(templatesStr);
     
     // 检查是否存在同名模板
@@ -502,7 +512,7 @@ function saveSQLTemplate(name, description, sql, validationRules = []) {
     }
     
     // 保存回 Properties
-    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    userProperties.setProperty(config.app.userPropertiesKey, JSON.stringify(templates));
     
     return {
       success: true,
@@ -524,8 +534,9 @@ function saveSQLTemplate(name, description, sql, validationRules = []) {
  */
 function getSQLTemplates() {
   try {
+    const config = getConfig();
     const userProperties = PropertiesService.getUserProperties();
-    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    const templatesStr = userProperties.getProperty(config.app.userPropertiesKey) || '[]';
     return JSON.parse(templatesStr);
   } catch (e) {
     Logger.log('获取SQL模板失败: ' + e);
@@ -540,8 +551,9 @@ function getSQLTemplates() {
  */
 function deleteSQLTemplate(name) {
   try {
+    const config = getConfig();
     const userProperties = PropertiesService.getUserProperties();
-    const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+    const templatesStr = userProperties.getProperty(config.app.userPropertiesKey) || '[]';
     let templates = JSON.parse(templatesStr);
     
     // 查找并删除模板
@@ -557,7 +569,7 @@ function deleteSQLTemplate(name) {
     }
     
     // 保存回 Properties
-    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    userProperties.setProperty(config.app.userPropertiesKey, JSON.stringify(templates));
     
     return {
       success: true,
@@ -593,8 +605,9 @@ function exportSQLTemplates() {
 function importSQLTemplates(jsonData) {
   try {
     const templates = JSON.parse(jsonData);
+    const config = getConfig();
     const userProperties = PropertiesService.getUserProperties();
-    userProperties.setProperty('sql_templates', JSON.stringify(templates));
+    userProperties.setProperty(config.app.userPropertiesKey, JSON.stringify(templates));
     return {
       success: true,
       message: `已导入 ${templates.length} 个模板`
@@ -609,8 +622,9 @@ function importSQLTemplates(jsonData) {
 
 // 检查存储使用情况
 function checkStorageUsage() {
+  const config = getConfig();
   const userProperties = PropertiesService.getUserProperties();
-  const templatesStr = userProperties.getProperty('sql_templates') || '[]';
+  const templatesStr = userProperties.getProperty(config.app.userPropertiesKey) || '[]';
   
   return {
     templatesCount: JSON.parse(templatesStr).length,
@@ -717,293 +731,347 @@ function executeSQLWithValidation(sql, params = {}, validationRules = []) {
 }
 
 /**
- * 评估验证表达式
- * @param {string} expression - 条件表达式，如 "col1 = col2" 或 "JSON_EXTRACT(jsonColumn, '$.type') = 'product'"
- * @param {Object} row - 数据行
- * @returns {boolean} 表达式是否为真
+ * 初始化中央模板存储库（如果不存在）
+ * @returns {Object} - 包含存储库信息的对象
  */
-function evaluateExpression(expression, row) {
-  // 调试日志函数
-  const log = (msg) => {
-    if (typeof Logger !== 'undefined' && Logger.log) {
-      Logger.log(msg);
-    } else {
-      console.log(msg);
-    }
-  };
-
+function initCentralTemplateRepository() {
   try {
-    // 递归解析嵌套函数的核心函数
-    function resolveNestedFunctions(expr) {
-      // 正则表达式匹配函数调用，支持嵌套
-      const functionRegex = /(\w+)\(([^()]*(?:\([^()]*\)[^()]*)?)\)/;
+    const config = getConfig();
+    // 检查是否存在中央模板存储库文件
+    const centralRepoId = config.templateRepository.fileId;
+    let centralRepo;
+    
+    try {
+      // 尝试直接用ID打开
+      centralRepo = SpreadsheetApp.openById(centralRepoId);
+      Logger.log("已找到中央模板存储库");
+    } catch (e) {
+      // 如果不存在，创建新的存储库
+      centralRepo = SpreadsheetApp.create("GSQLCentralTemplateRepository");
       
-      let match;
-      while ((match = expr.match(functionRegex))) {
-        const fullMatch = match[0];
-        const funcName = match[1].toUpperCase();
-        const argsStr = match[2];
-        
-        // 解析参数，处理嵌套
-        const args = parseArguments(argsStr);
-        
-        // 执行函数调用并获取结果
-        const result = executeFunctionCall(funcName, args, row);
-        
-        // 替换原始函数调用
-        expr = expr.replace(fullMatch, result);
-      }
+      // 创建所需的工作表（公开模板、审核日志、用户反馈）
+      let publicTemplatesSheet = centralRepo.getActiveSheet();
+      publicTemplatesSheet.setName(config.templateRepository.sheets.publicTemplates);
       
-      return expr;
-    }
-
-    // 复杂参数解析函数
-    function parseArguments(argsStr) {
-      const args = [];
-      let currentArg = '';
-      let inQuotes = false;
-      let quoteChar = '';
-      let nestingLevel = 0;
-
-      for (let i = 0; i < argsStr.length; i++) {
-        const char = argsStr[i];
-
-        // 跟踪括号嵌套层级
-        if (char === '(') nestingLevel++;
-        if (char === ')') nestingLevel--;
-
-        // 处理引号
-        if ((char === "'" || char === '"') && (i === 0 || argsStr[i-1] !== '\\')) {
-          if (!inQuotes) {
-            inQuotes = true;
-            quoteChar = char;
-          } else if (char === quoteChar) {
-            inQuotes = false;
-          }
-        }
-
-        // 分割参数
-        if (char === ',' && !inQuotes && nestingLevel === 0) {
-          args.push(currentArg.trim());
-          currentArg = '';
-        } else {
-          currentArg += char;
-        }
-      }
-
-      if (currentArg.trim()) {
-        args.push(currentArg.trim());
-      }
-
-      // 处理每个参数
-      return args.map(arg => {
-        // 去除引号
-        if ((arg.startsWith("'") && arg.endsWith("'")) || 
-            (arg.startsWith('"') && arg.endsWith('"'))) {
-          return arg.substring(1, arg.length - 1);
-        }
-        
-        // 处理嵌套函数
-        const funcMatch = arg.match(/^(\w+)\(.*\)$/);
-        if (funcMatch) {
-          return resolveNestedFunctions(arg);
-        }
-        
-        // 检查是否是列引用
-        if (arg in row) {
-          return row[arg];
-        }
-        
-        // 尝试转换为数字
-        if (!isNaN(arg)) {
-          return Number(arg);
-        }
-        
-        return arg;
-      });
-    }
-
-    // 执行函数调用
-    function executeFunctionCall(funcName, args, row) {
-      try {
-        switch (funcName) {
-          case 'JSON_EXTRACT_FILTERED':
-            if (args.length === 4) {
-              const data = typeof args[0] === 'string' 
-                ? JSON.parse(args[0]) 
-                : args[0];
-              
-              if (!Array.isArray(data)) return '[]';
-              
-              const filteredData = data.filter(item => 
-                item && item[args[1]] === args[2]
-              ).map(item => item[args[3]]);
-              
-              return JSON.stringify(filteredData);
-            }
-            break;
-            
-          case 'ARRAY_LENGTH':
-            if (args.length === 1) {
-              try {
-                const arr = args[0];
-                
-                // 尝试解析 JSON 字符串
-                if (typeof arr === 'string') {
-                  try {
-                    const parsed = JSON.parse(arr);
-                    return Array.isArray(parsed) ? parsed.length : 1;
-                  } catch {
-                    // 如果不是有效 JSON，可能是逗号分隔的字符串
-                    return arr.split(',').filter(item => item.trim()).length;
-                  }
-                }
-                
-                // 如果已经是数组
-                return Array.isArray(arr) ? arr.length : 1;
-              } catch (e) {
-                log(`ARRAY_LENGTH 错误: ${e}`);
-                return 0;
-              }
-            }
-            break;
-            
-          case 'JSON_EXTRACT':
-            if (args.length === 2) {
-              try {
-                const data = typeof args[0] === 'string' 
-                  ? JSON.parse(args[0]) 
-                  : args[0];
-                
-                // 支持路径提取
-                const path = args[1].replace(/^['"]|['"]$/g, '');
-                return data[path];
-              } catch (e) {
-                log(`JSON_EXTRACT 错误: ${e}`);
-                return null;
-              }
-            }
-            break;
-            
-          default:
-            log(`未知函数: ${funcName}`);
-            return '0';
-        }
-      } catch (e) {
-        log(`函数执行错误: ${e}`);
-        return '0';
-      }
+      // 设置公开模板表头
+      const publicHeaders = [
+        "ID", "名称", "描述", "SQL代码", "验证规则", "贡献者", "创建日期", 
+        "更新日期", "状态", "类别标签", "使用次数"
+      ];
+      publicTemplatesSheet.getRange(1, 1, 1, publicHeaders.length).setValues([publicHeaders]);
       
-      return '0';
+      // 创建审核日志表
+      let reviewSheet = centralRepo.insertSheet(config.templateRepository.sheets.reviewLog);
+      const reviewHeaders = ["模板ID", "审核人", "审核日期", "审核结果", "备注"];
+      reviewSheet.getRange(1, 1, 1, reviewHeaders.length).setValues([reviewHeaders]);
+      
+      // 创建用户反馈表
+      let feedbackSheet = centralRepo.insertSheet(config.templateRepository.sheets.userFeedback);
+      const feedbackHeaders = ["模板ID", "用户", "评分", "评论", "日期"];
+      feedbackSheet.getRange(1, 1, 1, feedbackHeaders.length).setValues([feedbackHeaders]);
+      
+      Logger.log("已创建中央模板存储库");
     }
-
-    // 处理比较逻辑
-    function evaluateComparison(resolvedExpression) {
-      const operators = {
-        '=': (a, b) => String(a) == String(b),
-        '==': (a, b) => String(a) == String(b),
-        '!=': (a, b) => String(a) != String(b),
-        '>': (a, b) => Number(a) > Number(b),
-        '>=': (a, b) => Number(a) >= Number(b),
-        '<': (a, b) => Number(a) < Number(b),
-        '<=': (a, b) => Number(a) <= Number(b)
-      };
-
-      // 处理 AND/OR 逻辑
-      if (resolvedExpression.includes(' AND ')) {
-        const conditions = resolvedExpression.split(' AND ');
-        return conditions.every(cond => evaluateComparison(cond.trim()));
-      }
-
-      if (resolvedExpression.includes(' OR ')) {
-        const conditions = resolvedExpression.split(' OR ');
-        return conditions.some(cond => evaluateComparison(cond.trim()));
-      }
-
-      // 处理比较操作
-      for (const op of Object.keys(operators)) {
-        const regex = new RegExp(`(.+)\\s*${op.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(.+)`);
-        const match = resolvedExpression.match(regex);
-        
-        if (match) {
-          let left = match[1].trim();
-          let right = match[2].trim();
-
-          // 处理列引用和数值转换
-          left = left in row ? row[left] : (isNaN(left) ? left : Number(left));
-          right = right in row ? row[right] : (isNaN(right) ? right : Number(right));
-
-          return operators[op](left, right);
-        }
-      }
-
-      // 默认情况
-      return false;
-    }
-
-    // 主流程
-    const resolvedExpression = resolveNestedFunctions(expression);
-    return evaluateComparison(resolvedExpression);
-
+    
+    return {
+      success: true,
+      spreadsheetId: centralRepo.getId(),
+      url: centralRepo.getUrl()
+    };
   } catch (e) {
-    log(`表达式求值总体错误: ${e}`);
-    return false;
+    Logger.log("初始化中央模板存储库失败: " + e.toString());
+    return {
+      success: false,
+      error: e.toString()
+    };
   }
 }
 
-// 详细测试用例
-function testEvaluateExpression() {
-  const testCases = [
-    {
-      row: {
-        A_ARR_activity_components: [
-          { typ: 'floor_without_gacha', id: 1 },
-          { typ: 'floor_with_gacha', id: 2 }
-        ]
-      },
-      expr: 'ARRAY_LENGTH(JSON_EXTRACT_FILTERED(A_ARR_activity_components, "typ", "floor_without_gacha", "id")) > 0',
-      expected: true,
-      description: "两层嵌套函数：ARRAY_LENGTH 和 JSON_EXTRACT_FILTERED"
-    },
-    {
-      row: { 
-        A_ARR_activity_components: [
-          { typ: 'floor_without_gacha', id: 1 },
-          { typ: 'floor_with_gacha', id: 2 }
-        ] 
-      },
-      expr: 'ARRAY_LENGTH(JSON_EXTRACT_FILTERED(A_ARR_activity_components, "typ", "floor_without_gacha", "id")) == 1',
-      expected: true,
-      description: "使用相等比较运算符"
-    },
-    {
-      row: { value: 5 },
-      expr: 'value > 3',
-      expected: true,
-      description: "简单数值比较"
-    },
-    {
-      row: { 
-        data: '[{"type":"premium"},{"type":"basic"}]' 
-      },
-      expr: 'ARRAY_LENGTH(data) == 2',
-      expected: true,
-      description: "JSON 字符串数组长度判断"
+/**
+ * 获取公共模板列表
+ * @returns {Object[]} - 模板列表
+ */
+function getPublicTemplates() {
+  try {
+    // 初始化或获取中央存储库
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) {
+      return { error: "无法访问中央模板存储库" };
     }
-  ];
-
-  // 使用普通日志方式输出测试结果
-  testCases.forEach((testCase, index) => {
-    const result = evaluateExpression(testCase.expr, testCase.row);
-    console.log(`测试用例 ${index + 1}:`);
-    console.log(`描述: ${testCase.description}`);
-    console.log(`表达式: ${testCase.expr}`);
-    console.log(`实际结果: ${result}`);
-    console.log(`预期结果: ${testCase.expected}`);
-    console.log(`测试状态: ${result === testCase.expected ? '✅ 通过' : '❌ 失败'}`);
-    console.log('---');
-  });
+    
+    const config = getConfig();
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const sheet = ss.getSheetByName(config.templateRepository.sheets.publicTemplates);
+    
+    // 获取所有数据行（跳过表头）
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return []; // 只有表头，没有数据
+    }
+    
+    const headers = data[0];
+    const templates = [];
+    
+    // 从第二行开始，这是实际数据
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      // 只获取状态为"已批准"的模板
+      if (row[8] === "已批准") {
+        const template = {
+          id: row[0],
+          name: row[1],
+          description: row[2],
+          sql: row[3],
+          validationRules: row[4] ? JSON.parse(row[4]) : [],
+          contributor: row[5],
+          created: row[6],
+          updated: row[7],
+          status: row[8],
+          tags: row[9] ? row[9].split(",") : [],
+          usageCount: row[10] || 0
+        };
+        templates.push(template);
+      }
+    }
+    
+    return templates;
+  } catch (e) {
+    Logger.log("获取公共模板失败: " + e.toString());
+    return { error: e.toString() };
+  }
 }
 
-// 直接运行测试
-testEvaluateExpression();
+/**
+ * 提交模板到公共存储库
+ * @param {string} name - 模板名称
+ * @param {string} description - 模板描述
+ * @param {string} sql - SQL查询语句
+ * @param {string[]} validationRules - 验证规则数组
+ * @param {string} category - 模板分类
+ * @returns {Object} - 提交结果
+ */
+function submitPublicTemplate(name, description, sql, validationRules = [], category = "") {
+  try {
+    // 获取当前用户信息
+    const userEmail = Session.getActiveUser().getEmail();
+    
+    // 初始化或获取中央存储库
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) {
+      return { success: false, error: "无法访问中央模板存储库" };
+    }
+    
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const sheet = ss.getSheetByName("公开模板");
+    
+    // 生成唯一ID
+    const templateId = "TPL" + new Date().getTime();
+    const now = new Date().toISOString();
+    
+    // 准备模板数据
+    const templateData = [
+      templateId,
+      name,
+      description,
+      sql,
+      JSON.stringify(validationRules),
+      userEmail,
+      now,
+      now,
+      "待审核", // 初始状态为待审核
+      category,
+      0 // 初始使用次数为0
+    ];
+    
+    // 添加到表格中
+    sheet.appendRow(templateData);
+    
+    return {
+      success: true,
+      message: "模板已提交，等待审核",
+      templateId: templateId
+    };
+  } catch (e) {
+    Logger.log("提交公共模板失败: " + e.toString());
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+/**
+ * 增加模板使用次数
+ * @param {string} templateId - 模板ID
+ */
+function incrementTemplateUsage(templateId) {
+  try {
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) return;
+    
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const sheet = ss.getSheetByName("公开模板");
+    
+    // 查找模板行
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === templateId) {
+        // 更新使用次数列
+        const currentCount = data[i][10] || 0;
+        sheet.getRange(i + 1, 11).setValue(currentCount + 1);
+        break;
+      }
+    }
+  } catch (e) {
+    Logger.log("更新模板使用次数失败: " + e.toString());
+  }
+}
+
+/**
+ * 提交模板反馈
+ * @param {string} templateId - 模板ID
+ * @param {number} rating - 评分 (1-5)
+ * @param {string} comment - 评论
+ */
+function submitTemplateFeedback(templateId, rating, comment) {
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) {
+      return { success: false, error: "无法访问中央模板存储库" };
+    }
+    
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const sheet = ss.getSheetByName("用户反馈");
+    
+    // 添加反馈
+    sheet.appendRow([
+      templateId,
+      userEmail,
+      rating,
+      comment,
+      new Date().toISOString()
+    ]);
+    
+    return { success: true, message: "感谢您的反馈" };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * 审核模板（管理员功能）
+ * @param {string} templateId - 模板ID
+ * @param {boolean} approved - 是否批准
+ * @param {string} comment - 审核意见
+ */
+function reviewTemplate(templateId, approved, comment) {
+  try {
+    const userEmail = Session.getActiveUser().getEmail();
+    
+    // 这里可以添加管理员权限检查
+    // if (!isAdmin(userEmail)) return { success: false, error: "权限不足" };
+    
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) {
+      return { success: false, error: "无法访问中央模板存储库" };
+    }
+    
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const publicSheet = ss.getSheetByName("公开模板");
+    const reviewSheet = ss.getSheetByName("审核日志");
+    
+    // 查找模板行
+    const data = publicSheet.getDataRange().getValues();
+    let templateRow = -1;
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === templateId) {
+        templateRow = i + 1; // 加1因为索引从0开始，但sheet行从1开始
+        break;
+      }
+    }
+    
+    if (templateRow === -1) {
+      return { success: false, error: "找不到指定的模板" };
+    }
+    
+    // 更新状态
+    publicSheet.getRange(templateRow, 9).setValue(approved ? "已批准" : "已拒绝");
+    
+    // 记录审核日志
+    reviewSheet.appendRow([
+      templateId,
+      userEmail,
+      new Date().toISOString(),
+      approved ? "已批准" : "已拒绝",
+      comment
+    ]);
+    
+    return { 
+      success: true, 
+      message: "审核完成: " + (approved ? "已批准" : "已拒绝") 
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+/**
+ * 为客户端暴露的公共模板API
+ */
+function getPublicTemplatesForClient() {
+  return getPublicTemplates();
+}
+
+function submitPublicTemplateForClient(name, description, sql, validationRules, category) {
+  return submitPublicTemplate(name, description, sql, validationRules, category);
+}
+
+function incrementTemplateUsageForClient(templateId) {
+  incrementTemplateUsage(templateId);
+  return { success: true };
+}
+
+function submitTemplateFeedbackForClient(templateId, rating, comment) {
+  return submitTemplateFeedback(templateId, rating, comment);
+}
+
+function importPublicTemplate(templateId) {
+  try {
+    // 获取公共模板
+    const publicTemplates = getPublicTemplates();
+    const template = publicTemplates.find(t => t.id === templateId);
+    
+    if (!template) {
+      return { success: false, error: "找不到指定的公共模板" };
+    }
+    
+    // 保存到用户个人模板
+    const result = saveSQLTemplate(
+      template.name,
+      template.description + " (从公共模板导入)",
+      template.sql,
+      template.validationRules
+    );
+    
+    // 增加使用次数
+    incrementTemplateUsage(templateId);
+    
+    return {
+      success: true,
+      message: "已导入到个人模板",
+      template: result.template
+    };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  }
+}
+
+function importPublicTemplateForClient(templateId) {
+  return importPublicTemplate(templateId);
+}
+
+function reviewTemplateForClient(templateId, approved, comment) {
+  return reviewTemplate(templateId, approved, comment);
+}
