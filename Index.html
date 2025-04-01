@@ -1429,6 +1429,16 @@
 
                 // 创建相关模态框
                 createPublicTemplateModals();
+
+                // Get current user email
+                google.script.run
+                    .withSuccessHandler(function(email) {
+                        document.getElementById('current-user-email').value = email;
+                    })
+                    .withFailureHandler(function(error) {
+                        console.error('Failed to get user email:', error);
+                    })
+                    .getCurrentUserEmail(); // Need to implement this server-side function
             }
 
             // 在侧边栏导航中添加公共模板标签
@@ -1689,6 +1699,9 @@
                               </span>
                             </h6>
                             <div>
+                              <button class="btn btn-sm btn-outline-warning me-1" onclick="editPublicTemplateModal('${template.id}')">
+                                <i class="bi bi-pencil"></i> 编辑
+                              </button>
                               <button class="btn btn-sm btn-outline-success me-1" onclick="usePublicTemplateDirectly('${template.id}')">
                                 <i class="bi bi-play-fill"></i> 直接使用
                               </button>
@@ -1970,6 +1983,103 @@
                         console.error('更新模板使用计数失败:', error);
                     })
                     .incrementTemplateUsageForClient(templateId);
+            }
+
+            // Add this function to handle the edit modal
+            function editPublicTemplateModal(templateId) {
+                google.script.run
+                    .withSuccessHandler(function(templates) {
+                        if (!templates || templates.error) {
+                            alert('获取模板详情失败: ' + (templates.error || '未知错误'));
+                            return;
+                        }
+                        
+                        const template = templates.find(t => t.id === templateId);
+                        if (!template) {
+                            alert('找不到指定的模板');
+                            return;
+                        }
+                        
+                        // Fill the submit modal with existing template data
+                        document.getElementById('publicTemplateName').value = template.name;
+                        document.getElementById('publicTemplateDescription').value = template.description || '';
+                        document.getElementById('publicTemplateCategory').value = template.tags ? template.tags.join(',') : '';
+                        document.getElementById('publicPreviewSql').textContent = template.sql;
+                        
+                        // Set validation rules
+                        if (template.validationRules && template.validationRules.length > 0) {
+                            document.getElementById('publicTemplateValidationRules').value = template.validationRules.join('\n');
+                        } else {
+                            document.getElementById('publicTemplateValidationRules').value = '';
+                        }
+                        
+                        // Add a hidden field to store the template ID for update
+                        let hiddenIdField = document.getElementById('publicTemplateId');
+                        if (!hiddenIdField) {
+                            hiddenIdField = document.createElement('input');
+                            hiddenIdField.type = 'hidden';
+                            hiddenIdField.id = 'publicTemplateId';
+                            document.getElementById('submitPublicTemplateForm').appendChild(hiddenIdField);
+                        }
+                        hiddenIdField.value = templateId;
+                        
+                        // Change the submit button text to indicate update
+                        const submitBtn = document.querySelector('#submitPublicTemplateModal .modal-footer .btn-primary');
+                        submitBtn.textContent = '更新模板';
+                        submitBtn.onclick = updatePublicTemplate;
+                        
+                        // Show the modal
+                        const modal = new bootstrap.Modal(document.getElementById('submitPublicTemplateModal'));
+                        modal.show();
+                    })
+                    .withFailureHandler(handleError)
+                    .getPublicTemplatesForClient();
+            }
+
+            // Add this function to handle the template update
+            function updatePublicTemplate() {
+                const templateId = document.getElementById('publicTemplateId').value;
+                const name = document.getElementById('publicTemplateName').value.trim();
+                const description = document.getElementById('publicTemplateDescription').value.trim();
+                const category = document.getElementById('publicTemplateCategory').value.trim();
+                const sql = document.getElementById('publicPreviewSql').textContent;
+                
+                // Get validation rules
+                const validationRulesText = document.getElementById('publicTemplateValidationRules').value;
+                const validationRules = validationRulesText.split('\n')
+                    .map(line => line.trim())
+                    .filter(line => line.length > 0);
+                
+                if (!name) {
+                    alert('请输入模板名称');
+                    return;
+                }
+                
+                if (!sql) {
+                    alert('SQL 查询不能为空');
+                    return;
+                }
+                
+                // Process category tags
+                const categories = category.split(',').map(c => c.trim()).filter(Boolean);
+                
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        if (result.success) {
+                            bootstrap.Modal.getInstance(document.getElementById('submitPublicTemplateModal')).hide();
+                            alert(result.message);
+                            loadPublicTemplates(); // Refresh the public templates list
+                            
+                            // Reset the submit button to its default state for new submissions
+                            const submitBtn = document.querySelector('#submitPublicTemplateModal .modal-footer .btn-primary');
+                            submitBtn.textContent = '提交';
+                            submitBtn.onclick = submitPublicTemplate;
+                        } else {
+                            alert('更新失败: ' + (result.error || '未知错误'));
+                        }
+                    })
+                    .withFailureHandler(handleError)
+                    .updatePublicTemplateForClient(templateId, name, description, sql, validationRules, categories.join(','));
             }
         </script>
     </div>

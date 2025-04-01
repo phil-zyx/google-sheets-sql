@@ -1158,3 +1158,81 @@ function getExcludedColumnsForClient() {
 function setExcludedColumnsForClient(columns) {
   return setExcludedColumns(columns);
 }
+
+/**
+ * 更新公共模板库中的模板
+ * @param {string} templateId - 要更新的模板ID
+ * @param {string} name - 更新后的模板名称
+ * @param {string} description - 更新后的模板描述
+ * @param {string} sql - 更新后的SQL查询语句
+ * @param {string[]} validationRules - 更新后的验证规则数组
+ * @param {string} category - 更新后的模板分类
+ * @returns {Object} - 更新结果
+ */
+function updatePublicTemplate(templateId, name, description, sql, validationRules = [], category = "") {
+  try {
+    // 获取当前用户信息
+    const userEmail = Session.getActiveUser().getEmail();
+    
+    // 初始化或获取中央存储库
+    const repoInfo = initCentralTemplateRepository();
+    if (!repoInfo.success) {
+      return { success: false, error: "无法访问中央模板存储库" };
+    }
+    
+    const ss = SpreadsheetApp.openById(repoInfo.spreadsheetId);
+    const sheet = ss.getSheetByName("公开模板");
+    
+    // 查找模板行
+    const data = sheet.getDataRange().getValues();
+    let templateRow = -1;
+    let originalContributor = "";
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === templateId) {
+        templateRow = i + 1; // 加1因为索引从0开始，但sheet行从1开始
+        originalContributor = data[i][5]; // 保存原始贡献者
+        break;
+      }
+    }
+    
+    if (templateRow === -1) {
+      return { success: false, error: "找不到指定的模板" };
+    }
+    
+    // 验证用户是否有权限更新（原始贡献者或管理员）
+    // 这里可以添加管理员检查逻辑
+    // if (userEmail !== originalContributor && !isAdmin(userEmail)) {
+    //   return { success: false, error: "您没有权限更新此模板" };
+    // }
+    
+    // 更新模板数据
+    const now = new Date().toISOString();
+    sheet.getRange(templateRow, 2).setValue(name); // 名称
+    sheet.getRange(templateRow, 3).setValue(description); // 描述
+    sheet.getRange(templateRow, 4).setValue(sql); // SQL
+    sheet.getRange(templateRow, 5).setValue(JSON.stringify(validationRules)); // 验证规则
+    sheet.getRange(templateRow, 8).setValue(now); // 更新日期
+    sheet.getRange(templateRow, 9).setValue("待审核"); // 状态重置为待审核
+    sheet.getRange(templateRow, 10).setValue(category); // 类别
+    
+    return {
+      success: true,
+      message: "模板已更新，等待审核",
+      templateId: templateId
+    };
+  } catch (e) {
+    Logger.log("更新公共模板失败: " + e.toString());
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+/**
+ * 为客户端暴露的更新公共模板API
+ */
+function updatePublicTemplateForClient(templateId, name, description, sql, validationRules, category) {
+  return updatePublicTemplate(templateId, name, description, sql, validationRules, category);
+}
