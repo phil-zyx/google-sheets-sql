@@ -288,4 +288,4 @@ function testEvaluateExpression() {
 }
 
 // 直接运行测试
-testEvaluateExpression();
+// testEvaluateExpression();

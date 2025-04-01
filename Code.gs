@@ -361,6 +361,13 @@ function executeSQL(sql, params = {}) {
  * @returns {HtmlOutput} - HTML 界面
  */
 function doGet(e) {
+  // 检查是否请求配置检查页面
+  Logger.log('doget page', e) 
+  if (e && e.parameter && e.parameter.page === 'check') {
+    Logger.log('check page') 
+    return showConfigCheckPage();
+  }
+  
   // 检查是否请求帮助页面
   if (e && e.parameter && e.parameter.page === 'help') {
     return HtmlService.createHtmlOutputFromFile('Help')
@@ -1074,4 +1081,13 @@ function importPublicTemplateForClient(templateId) {
 
 function reviewTemplateForClient(templateId, approved, comment) {
   return reviewTemplate(templateId, approved, comment);
+}
+
+/**
+ * 获取配置检查页面的HTML内容
+ * @returns {string} HTML内容
+ */
+function getConfigCheckPage() {
+  return HtmlService.createHtmlOutputFromFile('ConfigCheck')
+    .getContent();
 }
