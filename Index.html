@@ -301,6 +301,9 @@
                     <!-- 工作表面板 -->
                     <div class="tab-pane fade show active" id="sheets-panel" role="tabpanel">
                         <h5>可用的工作表</h5>
+                        <div class="mb-2">
+                            <input type="text" class="form-control form-control-sm" id="sheetSearchInput" placeholder="搜索表..." oninput="filterSheets()">
+                        </div>
                         <div id="sheetList" class="sheet-list">
                             <div class="spinner"></div> 加载中...
                         </div>
@@ -933,6 +936,30 @@
                 // 初始化公共模板功能
                 initPublicTemplatesFeature();
             });
+
+            // 过滤表列表
+            function filterSheets() {
+                const searchText = document.getElementById('sheetSearchInput').value.toLowerCase();
+                const sheetNodes = document.querySelectorAll('.sheet-name');
+
+                if (!searchText) {
+                    // 如果搜索框为空，显示所有表
+                    sheetNodes.forEach(node => {
+                        node.parentElement.style.display = 'block';
+                    });
+                    return;
+                }
+
+                // 根据搜索文本过滤表
+                sheetNodes.forEach(node => {
+                    const sheetName = node.textContent.trim().toLowerCase();
+                    if (sheetName.includes(searchText)) {
+                        node.parentElement.style.display = 'block';
+                    } else {
+                        node.parentElement.style.display = 'none';
+                    }
+                });
+            }
         </script>
 
         <!-- 添加模板相关的 JavaScript 代码 -->
