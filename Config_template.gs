@@ -33,6 +33,12 @@ function getConfig() {
       faviconUrl: "https://www.google.com/images/favicon.ico",
       // 用户属性存储键
       userPropertiesKey: "sql_templates",
+    },
+
+    // 数据相关配置
+    data: {
+      // 不加载的列名列表
+      excludedColumns: []
     }
   };
 }

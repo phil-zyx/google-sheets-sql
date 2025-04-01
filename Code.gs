@@ -243,12 +243,16 @@ function executeSQL(sql, params = {}) {
             const rows = [];
             
             // 存储原始列顺序
-            tableColumnOrders[alasqlTableName] = [...headers];
+            const filteredHeaders = [...headers].filter(header => !isExcludedColumn(header));
+            tableColumnOrders[alasqlTableName] = filteredHeaders;
             
             for (let i = 1; i < data.length; i++) {
               const row = {};
               for (let j = 0; j < headers.length; j++) {
-                row[headers[j]] = data[i][j];
+                // 跳过被排除的列名
+                if (!isExcludedColumn(headers[j])) {
+                  row[headers[j]] = data[i][j];
+                }
               }
               rows.push(row);
             }
@@ -1090,4 +1094,67 @@ function reviewTemplateForClient(templateId, approved, comment) {
 function getConfigCheckPage() {
   return HtmlService.createHtmlOutputFromFile('ConfigCheck')
     .getContent();
+}
+
+/**
+ * 检查列名是否在排除列表中
+ * @param {string} columnName - 列名
+ * @returns {boolean} - 是否被排除
+ */
+function isExcludedColumn(columnName) {
+  const config = getConfig();
+  const excludedColumns = config.data && config.data.excludedColumns 
+    ? config.data.excludedColumns 
+    : [];
+  return excludedColumns.includes(columnName);
+}
+
+/**
+ * 获取当前配置的排除列名列表
+ * @returns {string[]} - 排除的列名数组
+ */
+function getExcludedColumns() {
+  const config = getConfig();
+  return config.data && config.data.excludedColumns 
+    ? config.data.excludedColumns 
+    : [];
+}
+
+/**
+ * 设置排除列名列表
+ * @param {string[]} columns - 要排除的列名数组
+ * @returns {Object} - 操作结果
+ */
+function setExcludedColumns(columns) {
+  try {
+    // 这里需要根据配置存储机制来更新配置
+    // 如果使用 Properties Service 来存储配置，代码可能类似：
+    const userProperties = PropertiesService.getUserProperties();
+    const configStr = userProperties.getProperty('gsql_config') || '{}';
+    const config = JSON.parse(configStr);
+    
+    if (!config.data) config.data = {};
+    config.data.excludedColumns = Array.isArray(columns) ? columns : [];
+    
+    userProperties.setProperty('gsql_config', JSON.stringify(config));
+    
+    return {
+      success: true,
+      message: `已更新排除列名列表，共 ${config.data.excludedColumns.length} 个列名`
+    };
+  } catch (e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
+}
+
+// 为客户端暴露 API
+function getExcludedColumnsForClient() {
+  return getExcludedColumns();
+}
+
+function setExcludedColumnsForClient(columns) {
+  return setExcludedColumns(columns);
 }
