@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/theme/dracula.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
     <style>
-        body {
+            body {
             padding: 20px;
             font-family: Arial, sans-serif;
             height: 100vh;
@@ -117,149 +117,143 @@
             font-weight: bold;
             cursor: pointer;
         }
+        /* 更新表名样式 - 使用蓝紫色 */
         
         .worksheet-name {
             cursor: pointer;
-            color: #0d6efd;
-        }
-        
-        .query-history-item {
-            cursor: pointer;
-            padding: 5px;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .query-history-item:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .history-timestamp {
-            font-size: 0.8em;
-            color: #6c757d;
-        }
-        
-        .history-query {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        
-        .stats-panel {
-            font-size: 0.9em;
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-        
-        .stats-item {
-            display: inline-block;
-            margin-right: 15px;
-            margin-bottom: 5px;
-        }
-        /* 添加一个分隔线样式 */
-        
-        .timing-details {
-            margin-top: 5px;
-            padding-top: 5px;
-            border-top: 1px solid #dee2e6;
-        }
-        /* 添加响应式布局支持 */
-        
-        @media (max-width: 768px) {
-            .container-fluid {
-                height: auto;
-            }
-            .sheet-list,
-            .metadata-tree {
-                height: 300px;
-            }
-            .CodeMirror {
-                height: 200px;
-            }
-            .result-container {
-                height: 300px;
-            }
-        }
-        
-        .template-name {
-            cursor: pointer;
-            color: #0d6efd;
-        }
-        
-        .template-name:hover {
-            text-decoration: underline;
-        }
-        
-        #previewSql {
-            max-height: 200px;
-            overflow: auto;
-            white-space: pre-wrap;
-            font-size: 0.9em;
-        }
-        /* 验证相关样式 */
-        
-        .validation-controls {
-            margin-bottom: 15px;
-            padding: 10px;
-            background-color: #f8f9fa;
-            border-radius: 5px;
-        }
-        
-        .validation-error {
-            color: #dc3545;
-        }
-        
-        .validation-success {
-            color: #198754;
-        }
-        
-        .validation-summary {
-            margin-top: 10px;
-            padding: 10px;
-            border-radius: 5px;
-        }
-        /* 添加悬停提示样式 */
-        
-        tr.table-danger:hover {
-            background-color: #f8d7da;
-            cursor: help;
-        }
-        
-        .public-template-card {
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .public-template-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .public-template-card .template-name {
-            color: #0d6efd;
-            cursor: pointer;
-        }
-        
-        .public-template-card .template-name:hover {
-            text-decoration: underline;
-        }
-        
-        .rating-stars {
+            color: #5C7CFA;
+            /* 蓝紫色 */
             display: flex;
-            justify-content: center;
-            margin-bottom: 10px;
+            align-items: center;
         }
         
-        .btn-outline-warning:not(.active):hover {
-            background-color: transparent;
-            color: #ffc107;
+        .worksheet-name:hover {
+            text-decoration: underline;
+            color: #364FC7;
+            /* 深蓝色 */
         }
         
-        .btn-check:checked+.btn-outline-warning {
-            background-color: #ffc107;
-            border-color: #ffc107;
-            color: #000;
-        }
+        .worksheet-name::before {
+            .query-history-item:hover {
+                background-color: #f8f9fa;
+            }
+            .history-timestamp {
+                font-size: 0.8em;
+                color: #6c757d;
+            }
+            .history-query {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .stats-panel {
+                font-size: 0.9em;
+                margin-top: 10px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+            }
+            .stats-item {
+                display: inline-block;
+                margin-right: 15px;
+                margin-bottom: 5px;
+            }
+            /* 添加一个分隔线样式 */
+            .timing-details {
+                margin-top: 5px;
+                padding-top: 5px;
+                border-top: 1px solid #dee2e6;
+            }
+            /* 添加响应式布局支持 */
+            @media (max-width: 768px) {
+                .container-fluid {
+                    height: auto;
+                }
+                .sheet-list,
+                .metadata-tree {
+                    height: 300px;
+                }
+                .CodeMirror {
+                    height: 200px;
+                }
+                .result-container {
+                    height: 300px;
+                }
+            }
+            .template-name {
+                cursor: pointer;
+                color: #0d6efd;
+            }
+            .template-name:hover {
+                text-decoration: underline;
+            }
+            #previewSql {
+                max-height: 200px;
+                overflow: auto;
+                white-space: pre-wrap;
+                font-size: 0.9em;
+            }
+            /* 验证相关样式 */
+            .validation-controls {
+                margin-bottom: 15px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 5px;
+            }
+            .validation-error {
+                color: #dc3545;
+            }
+            .validation-success {
+                color: #198754;
+            }
+            .validation-summary {
+                margin-top: 10px;
+                padding: 10px;
+                border-radius: 5px;
+            }
+            /* 添加悬停提示样式 */
+            tr.table-danger:hover {
+                background-color: #f8d7da;
+                cursor: help;
+            }
+            .public-template-card {
+                transition: transform 0.2s, box-shadow 0.2s;
+            }
+            .public-template-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            }
+            .public-template-card .template-name {
+                color: #0d6efd;
+                cursor: pointer;
+            }
+            .public-template-card .template-name:hover {
+                text-decoration: underline;
+            }
+            .rating-stars {
+                display: flex;
+                justify-content: center;
+                margin-bottom: 10px;
+            }
+            .btn-outline-warning:not(.active):hover {
+                background-color: transparent;
+                color: #ffc107;
+            }
+            .btn-check:checked+.btn-outline-warning {
+                background-color: #ffc107;
+                border-color: #ffc107;
+                color: #000;
+            }
+            /* Add to the CSS section */
+            .column-name {
+                cursor: pointer;
+                color: #0d6efd;
+                display: inline-block;
+                margin-right: 3px;
+            }
+            .column-name:hover {
+                text-decoration: underline;
+            }
     </style>
 </head>
 
@@ -526,17 +520,19 @@
 
                 // 显示工作表名称和第一个页签的表头
                 data.sheets.forEach((sheet, index) => {
-                    html += `
+                            html += `
                     <div>
                         <div class="worksheet-name" onclick="insertTableName('${sheetName}.${sheet.name}')">
                             ${sheet.name}
                         </div>`;
 
-                    // 如果是第一个页签且有表头信息，显示表头
-                    if (index === 0 && data.firstHeaders && data.firstHeaders.length > 0) {
-                        html += `
+                            // 如果是第一个页签且有表头信息，显示表头
+                            if (index === 0 && data.firstHeaders && data.firstHeaders.length > 0) {
+                                html += `
                         <div class="tree-item">
-                            <small>列: ${data.firstHeaders.join(', ')}</small>
+                            <small>列: ${data.firstHeaders.map(header => 
+                                `<span class="column-name" onclick="insertColumnName('${header}')">${header}</span>`
+                            ).join(', ')}</small>
                         </div>`;
                     }
 
@@ -550,6 +546,13 @@
             function insertTableName(fullName) {
                 const cursorPos = editor.getCursor();
                 editor.replaceRange(fullName, cursorPos);
+                editor.focus();
+            }
+
+            // 在编辑器中插入列名
+            function insertColumnName(columnName) {
+                const cursorPos = editor.getCursor();
+                editor.replaceRange(columnName, cursorPos);
                 editor.focus();
             }
 
