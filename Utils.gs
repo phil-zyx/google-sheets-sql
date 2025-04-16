@@ -198,6 +198,19 @@ function registerCustomSQLFunctions(alasql) {
     // 检查数组中是否包含该值
     return arr.includes(value);
   };
+
+  // 注册数组展开函数
+  alasql.fn.UNNEST = function(arr) {
+    if (!Array.isArray(arr)) return [];
+    return arr.map(item => typeof item === 'object' ? item : { value: item });
+  };
+  
+  // 注册自定义的 CROSS JOIN 处理器（如果需要）
+  alasql.fn.CROSS_JOIN = function(table1, table2) {
+          return table1.reduce((result, row1) => {
+            return result.concat(table2.map(row2 => ({ ...row1, ...row2 })));
+          }, []);
+  };
   
   // 如果没有自定义函数，提供一个空的实现
   // 可以根据需要添加自定义函数

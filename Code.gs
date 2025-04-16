@@ -100,19 +100,37 @@ function getAllSheets() {
  * @returns {Set<string>} - 表引用集合
  */
 function extractTableReferences(sql) {
-  // 匹配 FROM 和 JOIN 子句中的表名，现在支持中文和其他特殊字符
-  const regex = /(?:FROM|JOIN)\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+))?/gi;
+  // 修改正则表达式以支持数组字段引用
+  const regex = /(?:FROM|(?:CROSS\s+)?JOIN)\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+))?/gi;
   const matches = [...sql.matchAll(regex)];
   const tableReferences = new Set();
+  const aliasMap = new Map();
+  const arrayFields = new Map(); // 新增：存储数组字段引用
   
   matches.forEach(match => {
-    const table = match[1];
-    if (table) {
-      tableReferences.add(table.trim());
+    const tableRef = match[1];
+    const alias = match[2];
+    
+    // 检查是否是数组字段引用（包含两个点的情况）
+    if (tableRef.includes('.')) {
+      const parts = tableRef.split('.');
+      if (parts.length === 3) { // 形如 a.field.array 的情况
+        const parentAlias = parts[0];
+        const arrayField = parts[2];
+        arrayFields.set(alias || arrayField, { parentAlias, arrayField });
+      } else {
+        tableReferences.add(tableRef.trim());
+      }
+    } else {
+      tableReferences.add(tableRef.trim());
+    }
+    
+    if (alias) {
+      aliasMap.set(alias.trim(), tableRef.trim());
     }
   });
   
-  return tableReferences;
+  return { tableReferences, aliasMap, arrayFields };
 }
 
 /**
@@ -150,31 +168,258 @@ function findSheetByName(fileName) {
  * 执行 SQL 查询（简化版）
  * @param {string} sql - SQL 查询语句
  * @param {Object} params - 查询参数
- * @returns {Object[]} - 查询结果
+ * @returns {Object} - 查询结果
  */
 function executeSQL(sql, params = {}) {
   const startTime = new Date().getTime();
   
   try {
     // 确保 AlaSQL 已正确初始化
-    if (!alasql || typeof alasql !== 'function' || !alasql.tables) {
+    if (!alasql || typeof alasql !== 'function') {
       const initSuccess = initAlaSQL();
       if (!initSuccess) {
         throw new Error('无法初始化 AlaSQLGS 库');
       }
-      
-      // 二次检查确保初始化成功
-      if (!alasql || typeof alasql !== 'function') {
-        throw new Error('AlaSQL 初始化后仍然无效');
+    }
+
+    // 检查是否是数组分列查询模式
+    const arrayColumnMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+COLUMNS\s+JOIN\s+\2\.([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)/i);
+    
+    // 检查是否是标准数组展开模式
+    const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+\2\.([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)/i);
+    
+    if (arrayColumnMatch) {
+      // 执行数组分列查询
+      return executeArrayColumnExpandSQL(sql, arrayColumnMatch, startTime);
+    } else if (arrayJoinMatch) {
+      // 执行标准的数组展开查询（分行）
+      return executeArrayExpandSQL(sql, arrayJoinMatch, startTime);
+    } else {
+      // 执行常规SQL查询
+      return executeRegularSQL(sql, params, startTime);
+    }
+
+  } catch (e) {
+    Logger.log("查询错误: " + e.toString());
+    return {
+      error: e.toString(),
+      stats: {
+        executionTime: new Date().getTime() - startTime
+      }
+    };
+  }
+}
+
+// 处理数组展开查询
+function executeArrayExpandSQL(sql, arrayJoinMatch, startTime) {
+  // 提取表名和字段信息
+  const tableName = arrayJoinMatch[1];
+  const tableAlias = arrayJoinMatch[2];
+  const arrayField = arrayJoinMatch[3];
+  const arrayAlias = arrayJoinMatch[4];
+  
+  // 查找并加载主表数据
+  const parts = tableName.split('.');
+  if (parts.length !== 2) {
+    throw new Error(`无效的表名格式: ${tableName}`);
+  }
+
+  const fileName = parts[0];
+  const sheetName = parts[1];
+  const files = findSheetByName(fileName);
+  
+  if (files.length === 0) {
+    throw new Error(`找不到文件: ${fileName}`);
+  }
+
+  const fileId = files[0].id;
+  const spreadsheet = SpreadsheetApp.openById(fileId);
+  const sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    throw new Error(`找不到工作表: ${sheetName}`);
+  }
+
+  // 获取数据
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  let rows = data.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((header, index) => {
+      let value = row[index];
+      // 尝试解析JSON字符串
+      if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
+        try {
+          value = JSON.parse(value);
+        } catch (e) {
+          // 如果解析失败，保持原值
+        }
+      }
+      obj[header] = value;
+    });
+    return obj;
+  });
+
+  // 创建临时表
+  const tempTableName = 'tbl' + Math.random().toString(36).substring(2, 8);
+  alasql(`CREATE TABLE ${tempTableName}`);
+  alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [rows]);
+
+  // 构建新的SQL查询来展开数组
+  let newSql = `
+    SELECT 
+      t.*,
+      UNNEST(t.${arrayField}) as ${arrayAlias}_item
+    FROM ${tempTableName} t
+    WHERE 1=1
+  `;
+
+  // 添加原始WHERE条件
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
+  if (whereMatch) {
+    const whereCondition = whereMatch[1].replace(
+      new RegExp(`${tableAlias}\\.`, 'g'), 
+      't.'
+    );
+    newSql += ` AND ${whereCondition}`;
+  }
+
+  // 执行查询
+  let result = alasql(newSql);
+
+  // 处理结果格式
+  result = result.map(row => {
+    const newRow = {};
+    for (const key in row) {
+      if (key === `${arrayAlias}_item`) {
+        // 展开数组项的字段
+        if (typeof row[key] === 'object') {
+          for (const itemKey in row[key]) {
+            newRow[`${arrayAlias}.${itemKey}`] = row[key][itemKey];
+          }
+        }
+      } else {
+        // 保持原有字段
+        newRow[`${tableAlias}.${key}`] = row[key];
       }
     }
+    return newRow;
+  });
+
+  return {
+    data: result,
+    stats: {
+      rowCount: result.length,
+      executionTime: new Date().getTime() - startTime
+    }
+  };
+}
+
+// 处理数组分列查询
+function executeArrayColumnExpandSQL(sql, arrayJoinMatch, startTime) {
+  // 提取表名和字段信息
+  const tableName = arrayJoinMatch[1];
+  const tableAlias = arrayJoinMatch[2];
+  const arrayField = arrayJoinMatch[3];
+  const arrayAlias = arrayJoinMatch[4];
+  
+  // 查找并加载主表数据
+  const parts = tableName.split('.');
+  if (parts.length !== 2) {
+    throw new Error(`无效的表名格式: ${tableName}`);
+  }
+
+  const fileName = parts[0];
+  const sheetName = parts[1];
+  const files = findSheetByName(fileName);
+  
+  if (files.length === 0) {
+    throw new Error(`找不到文件: ${fileName}`);
+  }
+
+  const fileId = files[0].id;
+  const spreadsheet = SpreadsheetApp.openById(fileId);
+  const sheet = spreadsheet.getSheetByName(sheetName);
+
+  if (!sheet) {
+    throw new Error(`找不到工作表: ${sheetName}`);
+  }
+
+  // 获取数据
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  let rows = data.slice(1).map(row => {
+    const obj = {};
+    headers.forEach((header, index) => {
+      let value = row[index];
+      // 尝试解析JSON字符串
+      if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
+        try {
+          value = JSON.parse(value);
+        } catch (e) {
+          // 如果解析失败，保持原值
+        }
+      }
+      obj[header] = value;
+    });
+    return obj;
+  });
+
+  // 处理结果，将数组元素展开为列
+  const result = rows.map(row => {
+    const newRow = {};
     
-    // 处理SQL注释，保留SQL语句
-    if (sql.includes('--')) {
-      // 移除单行注释 (--后面的内容直到行尾)
-      sql = sql.replace(/--.*?(\r\n|\r|\n|$)/g, ' ');
+    // 保留原有字段
+    for (const key in row) {
+      newRow[`${tableAlias}.${key}`] = row[key];
     }
     
+    // 展开数组字段为多列
+    if (Array.isArray(row[arrayField])) {
+      row[arrayField].forEach((item, index) => {
+        if (typeof item === 'object') {
+          // 如果数组项是对象，展开对象的每个属性
+          for (const itemKey in item) {
+            newRow[`${arrayAlias}.${index}.${itemKey}`] = item[itemKey];
+          }
+        } else {
+          // 如果数组项是普通值，直接使用索引
+          newRow[`${arrayAlias}.${index}`] = item;
+        }
+      });
+    }
+    
+    return newRow;
+  });
+
+  return {
+    data: result,
+    stats: {
+      rowCount: result.length,
+      executionTime: new Date().getTime() - startTime
+    }
+  };
+}
+
+function extractRegularTableReferences(sql) {
+  // 匹配 FROM 和 JOIN 子句中的表名，现在支持中文和其他特殊字符
+  const regex = /(?:FROM|JOIN)\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+))?/gi;
+  const matches = [...sql.matchAll(regex)];
+  const tableReferences = new Set();
+  
+  matches.forEach(match => {
+    const table = match[1];
+    if (table) {
+      tableReferences.add(table.trim());
+    }
+  });
+  
+  return tableReferences;
+}
+
+// 处理普通SQL查询
+function executeRegularSQL(sql, params, startTime) {
+  try {
     // 记录不同阶段的时间统计
     const timings = {
       initialization: new Date().getTime() - startTime,
@@ -182,9 +427,8 @@ function executeSQL(sql, params = {}) {
       execution: 0,
       formatting: 0
     };
-    
     // 提取表引用
-    const tableReferences = extractTableReferences(sql);
+    const tableReferences = extractRegularTableReferences(sql);
     Logger.log("查询引用的表: " + JSON.stringify(Array.from(tableReferences)));
     
     // 创建替换表映射和修改后的SQL
