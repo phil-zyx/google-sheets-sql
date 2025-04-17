@@ -182,18 +182,23 @@ function executeSQL(sql, params = {}) {
       }
     }
 
-    // 检查是否是数组分列查询模式
-    const arrayColumnMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+COLUMNS\s+JOIN\s+\2\.([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)/i);
-    
-    // 检查是否是标准数组展开模式
-    const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+\2\.([a-zA-Z0-9_]+)\s+([a-zA-Z0-9_]+)/i);
-    
-    if (arrayColumnMatch) {
-      // 执行数组分列查询
-      return executeArrayColumnExpandSQL(sql, arrayColumnMatch, startTime);
-    } else if (arrayJoinMatch) {
-      // 执行标准的数组展开查询（分行）
-      return executeArrayExpandSQL(sql, arrayJoinMatch, startTime);
+    const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+UNNEST\(\s*(\2\.[a-zA-Z0-9_]+)\s*\)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/i);
+    // 根据匹配的模式进行处理
+    if (arrayJoinMatch) {
+      // 提取数组字段名
+      const fieldParts = arrayJoinMatch[3].split('.');
+      const arrayField = fieldParts[1];
+      
+      // 创建匹配数组供executeArrayExpandSQL使用
+      const modifiedMatch = [
+        arrayJoinMatch[0], 
+        arrayJoinMatch[1], 
+        arrayJoinMatch[2], 
+        arrayField, 
+        arrayJoinMatch[4]
+      ];
+      
+      return executeArrayExpandSQL(sql, modifiedMatch, startTime);
     } else {
       // 执行常规SQL查询
       return executeRegularSQL(sql, params, startTime);
@@ -210,7 +215,13 @@ function executeSQL(sql, params = {}) {
   }
 }
 
-// 处理数组展开查询
+/**
+ * 处理带有数组展开的SQL查询（UNNEST操作）
+ * @param {string} sql - 带UNNEST的SQL查询
+ * @param {Array} arrayJoinMatch - UNNEST模式的正则匹配信息
+ * @param {number} startTime - 查询开始时间戳（用于性能跟踪）
+ * @returns {Object} - 包含查询结果和统计信息
+ */
 function executeArrayExpandSQL(sql, arrayJoinMatch, startTime) {
   // 提取表名和字段信息
   const tableName = arrayJoinMatch[1];
@@ -218,7 +229,101 @@ function executeArrayExpandSQL(sql, arrayJoinMatch, startTime) {
   const arrayField = arrayJoinMatch[3];
   const arrayAlias = arrayJoinMatch[4];
   
-  // 查找并加载主表数据
+  try {
+    // 解析查询组件（SELECT, WHERE, ORDER BY, LIMIT子句）
+    const queryParts = parseQueryComponents(sql);
+    
+    // 提前提取WHERE子句中针对主表的过滤条件
+    const primaryTableFilters = extractPrimaryTableFilters(queryParts.whereClause, tableAlias);
+    
+    // 加载数据时应用主表过滤条件
+    const { data, headers, filtered } = loadFilteredTableData(tableName, primaryTableFilters);
+    if (!data) {
+      throw new Error(`无法从 ${tableName} 加载数据`);
+    }
+    
+    // 记录过滤前后的行数用于统计
+    const preFilterCount = data.length - 1; // 减去表头行
+    const postFilterCount = filtered ? filtered : preFilterCount;
+    
+    // 转换原始数据为行对象
+    const rows = convertToRowObjects(data, headers);
+    
+    // 执行数组展开（标准SQL UNNEST操作）
+    const expandedRows = expandArrayData(rows, tableAlias, arrayField, arrayAlias, queryParts.selectedFields);
+    
+    // 应用剩余的WHERE过滤（针对展开后的数据）
+    const secondaryWhere = extractSecondaryFilters(queryParts.whereClause, tableAlias, arrayAlias);
+    const filteredRows = applyWhereCondition(expandedRows, secondaryWhere);
+    
+    // 应用ORDER BY排序
+    const sortedRows = applySorting(filteredRows, queryParts.orderByClause);
+    
+    // 应用LIMIT限制
+    const limitedRows = applyLimit(sortedRows, queryParts.limitValue);
+    
+    return {
+      data: limitedRows,
+      stats: {
+        rowCount: limitedRows.length,
+        preFilterCount: preFilterCount,
+        postFilterCount: postFilterCount,
+        executionTime: new Date().getTime() - startTime
+      }
+    };
+  } catch (e) {
+    Logger.log(`数组展开查询错误: ${e.toString()}`);
+    return {
+      error: e.toString(),
+      stats: {
+        executionTime: new Date().getTime() - startTime
+      }
+    };
+  }
+}
+
+/**
+ * 提取针对主表的过滤条件
+ * @param {string} whereClause - 完整的WHERE子句
+ * @param {string} tableAlias - 表别名
+ * @returns {Object|null} - 主表过滤条件
+ */
+function extractPrimaryTableFilters(whereClause, tableAlias) {
+  if (!whereClause) return null;
+  
+  // 寻找针对主表的简单过滤条件 (如 t.id = 123)
+  const tableFilterRegex = new RegExp(`${tableAlias}\\.(\\w+)\\s*(=|>|<|>=|<=|!=|<>|IN|LIKE)\\s*(.+?)(?:\\s+(?:AND|OR)\\s+|$)`, 'gi');
+  const matches = [...whereClause.matchAll(tableFilterRegex)];
+  
+  if (matches.length === 0) return null;
+  
+  const filters = {};
+  matches.forEach(match => {
+    const fieldName = match[1];
+    const operator = match[2].toUpperCase();
+    let value = match[3].trim();
+    
+    // 处理引号和数字
+    if ((value.startsWith("'") && value.endsWith("'")) || 
+        (value.startsWith('"') && value.endsWith('"'))) {
+      value = value.substring(1, value.length - 1);
+    } else if (!isNaN(value)) {
+      value = Number(value);
+    }
+    
+    filters[fieldName] = { operator, value };
+  });
+  
+  return filters;
+}
+
+/**
+ * 加载并过滤表数据
+ * @param {string} tableName - 表名（格式为"fileName.sheetName"）
+ * @param {Object|null} filters - 过滤条件
+ * @returns {Object} - 数据、表头和过滤后的行数
+ */
+function loadFilteredTableData(tableName, filters) {
   const parts = tableName.split('.');
   if (parts.length !== 2) {
     throw new Error(`无效的表名格式: ${tableName}`);
@@ -241,92 +346,104 @@ function executeArrayExpandSQL(sql, arrayJoinMatch, startTime) {
   }
 
   // 获取数据
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  let rows = data.slice(1).map(row => {
-    const obj = {};
-    headers.forEach((header, index) => {
-      let value = row[index];
-      // 尝试解析JSON字符串
-      if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
-        try {
-          value = JSON.parse(value);
-        } catch (e) {
-          // 如果解析失败，保持原值
-        }
-      }
-      obj[header] = value;
-    });
-    return obj;
-  });
-
-  // 创建临时表
-  const tempTableName = 'tbl' + Math.random().toString(36).substring(2, 8);
-  alasql(`CREATE TABLE ${tempTableName}`);
-  alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [rows]);
-
-  // 构建新的SQL查询来展开数组
-  let newSql = `
-    SELECT 
-      t.*,
-      UNNEST(t.${arrayField}) as ${arrayAlias}_item
-    FROM ${tempTableName} t
-    WHERE 1=1
-  `;
-
-  // 添加原始WHERE条件
-  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
-  if (whereMatch) {
-    const whereCondition = whereMatch[1].replace(
-      new RegExp(`${tableAlias}\\.`, 'g'), 
-      't.'
-    );
-    newSql += ` AND ${whereCondition}`;
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData[0];
+  
+  // 如果没有过滤条件，返回所有数据
+  if (!filters) {
+    return { data: allData, headers };
   }
-
-  // 执行查询
-  let result = alasql(newSql);
-
-  // 处理结果格式
-  result = result.map(row => {
-    const newRow = {};
-    for (const key in row) {
-      if (key === `${arrayAlias}_item`) {
-        // 展开数组项的字段
-        if (typeof row[key] === 'object') {
-          for (const itemKey in row[key]) {
-            newRow[`${arrayAlias}.${itemKey}`] = row[key][itemKey];
-          }
-        }
-      } else {
-        // 保持原有字段
-        newRow[`${tableAlias}.${key}`] = row[key];
+  
+  // 应用过滤条件
+  const filteredData = [headers]; // 保留表头行
+  
+  // 对每行应用过滤器
+  for (let i = 1; i < allData.length; i++) {
+    const row = allData[i];
+    let includeRow = true;
+    
+    // 检查行是否符合所有过滤条件
+    for (const field in filters) {
+      const columnIndex = headers.indexOf(field);
+      if (columnIndex === -1) continue;
+      
+      const cellValue = row[columnIndex];
+      const filter = filters[field];
+      
+      // 根据操作符进行比较
+      switch (filter.operator) {
+        case '=':
+          if (cellValue != filter.value) includeRow = false;
+          break;
+        case '>':
+          if (cellValue <= filter.value) includeRow = false;
+          break;
+        case '<':
+          if (cellValue >= filter.value) includeRow = false;
+          break;
+        case '>=':
+          if (cellValue < filter.value) includeRow = false;
+          break;
+        case '<=':
+          if (cellValue > filter.value) includeRow = false;
+          break;
+        case '!=':
+        case '<>':
+          if (cellValue == filter.value) includeRow = false;
+          break;
+        case 'IN':
+          // 简单处理IN，假设值是逗号分隔的列表
+          const inValues = filter.value.replace(/[\(\)]/g, '').split(',').map(v => v.trim());
+          if (!inValues.includes(String(cellValue))) includeRow = false;
+          break;
+        case 'LIKE':
+          // 简单处理LIKE，将SQL通配符转换为正则表达式
+          const pattern = filter.value.replace(/%/g, '.*').replace(/_/g, '.');
+          const regex = new RegExp(`^${pattern}$`, 'i');
+          if (!regex.test(String(cellValue))) includeRow = false;
+          break;
       }
+      
+      if (!includeRow) break;
     }
-    return newRow;
-  });
-
-  return {
-    data: result,
-    stats: {
-      rowCount: result.length,
-      executionTime: new Date().getTime() - startTime
+    
+    if (includeRow) {
+      filteredData.push(row);
     }
+  }
+  
+  return { 
+    data: filteredData, 
+    headers, 
+    filtered: filteredData.length - 1 // 过滤后的行数（不包括表头）
   };
 }
 
-// 处理数组分列查询
-function executeArrayColumnExpandSQL(sql, arrayJoinMatch, startTime) {
-  // 提取表名和字段信息
-  const tableName = arrayJoinMatch[1];
-  const tableAlias = arrayJoinMatch[2];
-  const arrayField = arrayJoinMatch[3];
-  const arrayAlias = arrayJoinMatch[4];
+/**
+ * 提取用于展开后数据的次级过滤条件
+ * @param {string} whereClause - 完整的WHERE子句
+ * @param {string} tableAlias - 表别名
+ * @param {string} arrayAlias - 数组别名
+ * @returns {string|null} - 次级过滤条件
+ */
+function extractSecondaryFilters(whereClause, tableAlias, arrayAlias) {
+  if (!whereClause) return null;
   
-  // 查找并加载主表数据
+  // 提取数组相关的过滤条件或其他未处理的条件
+  // 由于复杂性，这里可能需要根据实际情况调整
+  // 简单实现：如果有主表过滤条件，就保留原始WHERE子句
+  return whereClause;
+}
+
+/**
+ * Loads table data from a Google Sheet
+ * @param {string} tableName - Table name in format "fileName.sheetName"
+ * @returns {Object} - Data and headers from the sheet
+ */
+function loadTableData(tableName) {
   const parts = tableName.split('.');
   if (parts.length !== 2) {
-    throw new Error(`无效的表名格式: ${tableName}`);
+    throw new Error(`Invalid table name format: ${tableName}`);
   }
 
   const fileName = parts[0];
@@ -334,7 +451,7 @@ function executeArrayColumnExpandSQL(sql, arrayJoinMatch, startTime) {
   const files = findSheetByName(fileName);
   
   if (files.length === 0) {
-    throw new Error(`找不到文件: ${fileName}`);
+    throw new Error(`File not found: ${fileName}`);
   }
 
   const fileId = files[0].id;
@@ -342,63 +459,232 @@ function executeArrayColumnExpandSQL(sql, arrayJoinMatch, startTime) {
   const sheet = spreadsheet.getSheetByName(sheetName);
 
   if (!sheet) {
-    throw new Error(`找不到工作表: ${sheetName}`);
+    throw new Error(`Sheet not found: ${sheetName}`);
   }
 
-  // 获取数据
+  // Get data
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
-  let rows = data.slice(1).map(row => {
+  
+  return { data, headers };
+}
+
+/**
+ * Parses SQL query components (SELECT, WHERE, ORDER BY, LIMIT clauses)
+ * @param {string} sql - SQL query string
+ * @returns {Object} - Parsed query components
+ */
+function parseQueryComponents(sql) {
+  // Extract SELECT fields
+  const selectMatch = sql.match(/SELECT\s+(.+?)\s+FROM/i);
+  let selectedFields = [];
+  
+  if (selectMatch) {
+    // Parse field list from SELECT clause
+    const selectClause = selectMatch[1].trim();
+    if (selectClause !== '*') {
+      selectedFields = selectClause.split(',')
+        .map(field => field.trim())
+        .filter(field => field !== '');
+    }
+  }
+  
+  // Extract WHERE clause
+  const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
+  const whereClause = whereMatch ? whereMatch[1] : null;
+  
+  // Extract ORDER BY clause
+  const orderByMatch = sql.match(/ORDER\s+BY\s+(.+?)(?:\s+LIMIT|\s*$)/i);
+  const orderByClause = orderByMatch ? orderByMatch[1] : null;
+  
+  // Extract LIMIT clause
+  const limitMatch = sql.match(/LIMIT\s+(\d+)/i);
+  const limitValue = limitMatch ? parseInt(limitMatch[1]) : null;
+  
+  return {
+    selectedFields,
+    whereClause,
+    orderByClause, 
+    limitValue
+  };
+}
+
+/**
+ * Converts sheet data to row objects
+ * @param {Array} data - Raw sheet data
+ * @param {Array} headers - Sheet headers
+ * @returns {Array} - Array of row objects
+ */
+function convertToRowObjects(data, headers) {
+  return data.slice(1).map(row => {
     const obj = {};
     headers.forEach((header, index) => {
       let value = row[index];
-      // 尝试解析JSON字符串
+      // Try to parse JSON strings
       if (typeof value === 'string' && (value.startsWith('[') || value.startsWith('{'))) {
         try {
           value = JSON.parse(value);
         } catch (e) {
-          // 如果解析失败，保持原值
+          // Keep original value if parsing fails
         }
       }
       obj[header] = value;
     });
     return obj;
   });
+}
 
-  // 处理结果，将数组元素展开为列
-  const result = rows.map(row => {
-    const newRow = {};
+/**
+ * Expands array data to create new rows
+ * @param {Array} rows - Original data rows
+ * @param {string} tableAlias - Table alias
+ * @param {string} arrayField - Array field name
+ * @param {string} arrayAlias - Array alias
+ * @param {Array} selectedFields - Selected fields from query
+ * @returns {Array} - Expanded rows
+ */
+function expandArrayData(rows, tableAlias, arrayField, arrayAlias, selectedFields) {
+  let resultRows = [];
+  
+  rows.forEach(row => {
+    const arrayData = row[arrayField];
     
-    // 保留原有字段
-    for (const key in row) {
-      newRow[`${tableAlias}.${key}`] = row[key];
-    }
-    
-    // 展开数组字段为多列
-    if (Array.isArray(row[arrayField])) {
-      row[arrayField].forEach((item, index) => {
-        if (typeof item === 'object') {
-          // 如果数组项是对象，展开对象的每个属性
-          for (const itemKey in item) {
-            newRow[`${arrayAlias}.${index}.${itemKey}`] = item[itemKey];
-          }
-        } else {
-          // 如果数组项是普通值，直接使用索引
-          newRow[`${arrayAlias}.${index}`] = item;
-        }
+    // Process only if field is an array
+    if (Array.isArray(arrayData)) {
+      // Create a new row for each array element
+      arrayData.forEach(item => {
+        const expandedRow = createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, selectedFields);
+        resultRows.push(expandedRow);
       });
     }
-    
-    return newRow;
+    // If field is not an array, no rows are generated
   });
+  
+  return resultRows;
+}
 
-  return {
-    data: result,
-    stats: {
-      rowCount: result.length,
-      executionTime: new Date().getTime() - startTime
+/**
+ * Creates an expanded row from an array item
+ * @param {Object} row - Original data row
+ * @param {*} item - Array item
+ * @param {string} tableAlias - Table alias
+ * @param {string} arrayField - Array field name
+ * @param {string} arrayAlias - Array alias
+ * @param {Array} selectedFields - Selected fields from query
+ * @returns {Object} - Expanded row
+ */
+function createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, selectedFields) {
+  const expandedRow = {};
+  
+  // If fields are specified
+  if (selectedFields.length > 0) {
+    selectedFields.forEach(field => {
+      const cleanField = field.trim();
+      
+      // Handle table field references (t.id format)
+      if (cleanField.startsWith(`${tableAlias}.`)) {
+        const fieldName = cleanField.substring(tableAlias.length + 1);
+        expandedRow[cleanField] = row[fieldName];
+      }
+      // Handle array alias
+      else if (cleanField === arrayAlias) {
+        expandedRow[arrayAlias] = item;
+      }
+      // Handle alias using AS
+      else {
+        const aliasMatch = cleanField.match(/(.+?)\s+[aA][sS]\s+(.+)/);
+        if (aliasMatch) {
+          const sourceField = aliasMatch[1].trim();
+          const targetAlias = aliasMatch[2].trim();
+          
+          if (sourceField === arrayAlias) {
+            expandedRow[targetAlias] = item;
+          } else if (sourceField.startsWith(`${tableAlias}.`)) {
+            const fieldName = sourceField.substring(tableAlias.length + 1);
+            expandedRow[targetAlias] = row[fieldName];
+          }
+        }
+      }
+    });
+  } else {
+    // If SELECT *, include all table fields and array item
+    for (const key in row) {
+      if (key !== arrayField) { // Exclude array field itself
+        expandedRow[`${tableAlias}.${key}`] = row[key];
+      }
     }
-  };
+    // Add expanded array item
+    expandedRow[arrayAlias] = item;
+  }
+  
+  return expandedRow;
+}
+
+/**
+ * Applies WHERE condition filtering
+ * @param {Array} rows - Data rows
+ * @param {string} whereClause - WHERE clause
+ * @returns {Array} - Filtered rows
+ */
+function applyWhereCondition(rows, whereClause) {
+  if (!whereClause || rows.length === 0) return rows;
+  
+  try {
+    // Create temporary table and apply filtering
+    const tempTableName = 'temp_' + Math.random().toString(36).substring(2, 8);
+    alasql(`CREATE TABLE ${tempTableName}`);
+    alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [rows]);
+    
+    // Execute filtering query
+    const filteredRows = alasql(`SELECT * FROM ${tempTableName} WHERE ${whereClause}`);
+    
+    // Clean up temporary table
+    alasql(`DROP TABLE ${tempTableName}`);
+    
+    return filteredRows;
+  } catch (e) {
+    Logger.log(`Error applying WHERE condition: ${e}`);
+    return rows; // Return original rows if filtering fails
+  }
+}
+
+/**
+ * Applies ORDER BY sorting
+ * @param {Array} rows - Data rows
+ * @param {string} orderByClause - ORDER BY clause
+ * @returns {Array} - Sorted rows
+ */
+function applySorting(rows, orderByClause) {
+  if (!orderByClause || rows.length === 0) return rows;
+  
+  try {
+    // Create temporary table and apply sorting
+    const tempTableName = 'temp_' + Math.random().toString(36).substring(2, 8);
+    alasql(`CREATE TABLE ${tempTableName}`);
+    alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [rows]);
+    
+    // Execute sorting query
+    const sortedRows = alasql(`SELECT * FROM ${tempTableName} ORDER BY ${orderByClause}`);
+    
+    // Clean up temporary table
+    alasql(`DROP TABLE ${tempTableName}`);
+    
+    return sortedRows;
+  } catch (e) {
+    Logger.log(`Error applying ORDER BY: ${e}`);
+    return rows; // Return original rows if sorting fails
+  }
+}
+
+/**
+ * Applies LIMIT restriction
+ * @param {Array} rows - Data rows
+ * @param {number} limit - Limit value
+ * @returns {Array} - Limited rows
+ */
+function applyLimit(rows, limit) {
+  if (!limit || limit <= 0 || rows.length === 0) return rows;
+  return rows.slice(0, limit);
 }
 
 function extractRegularTableReferences(sql) {
