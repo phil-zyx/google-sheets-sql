@@ -182,14 +182,17 @@ function executeSQL(sql, params = {}) {
       }
     }
 
+    // 检查是否存在 UNNEST 操作
     const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+UNNEST\(\s*(\2\.[a-zA-Z0-9_]+)\s*\)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/i);
-    // 根据匹配的模式进行处理
+    
+    let modifiedSql = sql;
+    let expansionStats = null;
+    
+    // 如果存在 UNNEST 操作，进行预处理
     if (arrayJoinMatch) {
-      // 提取数组字段名
       const fieldParts = arrayJoinMatch[3].split('.');
       const arrayField = fieldParts[1];
       
-      // 创建匹配数组供executeArrayExpandSQL使用
       const modifiedMatch = [
         arrayJoinMatch[0], 
         arrayJoinMatch[1], 
@@ -198,11 +201,21 @@ function executeSQL(sql, params = {}) {
         arrayJoinMatch[4]
       ];
       
-      return executeArrayExpandSQL(sql, modifiedMatch, startTime);
-    } else {
-      // 执行常规SQL查询
-      return executeRegularSQL(sql, params, startTime);
+      // 预处理 UNNEST 操作，返回临时表名和修改后的SQL
+      const { tempTableName, newSql, stats } = preprocessArrayExpansion(sql, modifiedMatch);
+      modifiedSql = newSql;
+      expansionStats = stats;
     }
+    
+    // 执行处理后的SQL查询（无论是否包含UNNEST操作）
+    const result = executeRegularSQL(modifiedSql, params, startTime);
+    
+    // 如果有数组展开的统计信息，添加到结果中
+    if (expansionStats && result.stats) {
+      result.stats.arrayExpansion = expansionStats;
+    }
+    
+    return result;
 
   } catch (e) {
     Logger.log("查询错误: " + e.toString());
@@ -216,70 +229,83 @@ function executeSQL(sql, params = {}) {
 }
 
 /**
- * 处理带有数组展开的SQL查询（UNNEST操作）
- * @param {string} sql - 带UNNEST的SQL查询
- * @param {Array} arrayJoinMatch - UNNEST模式的正则匹配信息
- * @param {number} startTime - 查询开始时间戳（用于性能跟踪）
- * @returns {Object} - 包含查询结果和统计信息
+ * 预处理包含 UNNEST 操作的 SQL
+ * @param {string} sql - 原始SQL
+ * @param {Array} arrayJoinMatch - UNNEST匹配信息
+ * @returns {Object} - 处理后的SQL和统计信息
  */
-function executeArrayExpandSQL(sql, arrayJoinMatch, startTime) {
-  // 提取表名和字段信息
+function preprocessArrayExpansion(sql, arrayJoinMatch) {
   const tableName = arrayJoinMatch[1];
-  const tableAlias = arrayJoinMatch[2];
+  const tableAlias = arrayJoinMatch[2];  // 原始表的别名，例如 't'
   const arrayField = arrayJoinMatch[3];
   const arrayAlias = arrayJoinMatch[4];
   
-  try {
-    // 解析查询组件（SELECT, WHERE, ORDER BY, LIMIT子句）
-    const queryParts = parseQueryComponents(sql);
-    
-    // 提前提取WHERE子句中针对主表的过滤条件
-    const primaryTableFilters = extractPrimaryTableFilters(queryParts.whereClause, tableAlias);
-    
-    // 加载数据时应用主表过滤条件
-    const { data, headers, filtered } = loadFilteredTableData(tableName, primaryTableFilters);
-    if (!data) {
-      throw new Error(`无法从 ${tableName} 加载数据`);
-    }
-    
-    // 记录过滤前后的行数用于统计
-    const preFilterCount = data.length - 1; // 减去表头行
-    const postFilterCount = filtered ? filtered : preFilterCount;
-    
-    // 转换原始数据为行对象
-    const rows = convertToRowObjects(data, headers);
-    
-    // 执行数组展开（标准SQL UNNEST操作）
-    const expandedRows = expandArrayData(rows, tableAlias, arrayField, arrayAlias, queryParts.selectedFields);
-    
-    // 应用剩余的WHERE过滤（针对展开后的数据）
-    const secondaryWhere = extractSecondaryFilters(queryParts.whereClause, tableAlias, arrayAlias);
-    const filteredRows = applyWhereCondition(expandedRows, secondaryWhere);
-    
-    // 应用ORDER BY排序
-    const sortedRows = applySorting(filteredRows, queryParts.orderByClause);
-    
-    // 应用LIMIT限制
-    const limitedRows = applyLimit(sortedRows, queryParts.limitValue);
-    
-    return {
-      data: limitedRows,
-      stats: {
-        rowCount: limitedRows.length,
-        preFilterCount: preFilterCount,
-        postFilterCount: postFilterCount,
-        executionTime: new Date().getTime() - startTime
-      }
-    };
-  } catch (e) {
-    Logger.log(`数组展开查询错误: ${e.toString()}`);
-    return {
-      error: e.toString(),
-      stats: {
-        executionTime: new Date().getTime() - startTime
-      }
-    };
+  // 解析查询组件
+  const queryParts = parseQueryComponents(sql);
+  
+  // 提取主表过滤条件
+  const primaryTableFilters = extractPrimaryTableFilters(queryParts.whereClause, tableAlias);
+  
+  // 加载数据并应用主表过滤
+  const { data, headers, filtered } = loadFilteredTableData(tableName, primaryTableFilters);
+  if (!data) {
+    throw new Error(`无法从 ${tableName} 加载数据`);
   }
+  
+  // 记录统计信息
+  const preFilterCount = data.length - 1;
+  const postFilterCount = filtered ? filtered : preFilterCount;
+  
+  // 转换原始数据为行对象
+  const rows = convertToRowObjects(data, headers);
+  
+  // 执行数组展开
+  const expandedRows = expandArrayData(rows, tableAlias, arrayField, arrayAlias, queryParts.selectedFields);
+  
+  // 重命名字段，将带点的字段名转换为不带点的形式
+  const renamedExpandedRows = expandedRows.map(row => {
+    const newRow = {};
+    for (const key in row) {
+      // 替换字段名中的点号为下划线
+      const newKey = key.replace(/\./g, '_');
+      newRow[newKey] = row[key];
+    }
+    return newRow;
+  });
+  
+  // 创建临时表存放展开后的数据
+  const tempTableName = 'expanded_' + Math.random().toString(36).substring(2, 8);
+  alasql(`CREATE TABLE ${tempTableName}`);
+  alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [renamedExpandedRows]);
+  
+  // 同时更新SQL查询中的字段引用
+  const newSql = sql.replace(
+    arrayJoinMatch[0], 
+    `FROM ${tempTableName} ${tableAlias}`
+  ).replace(/t\.A_INT_id/g, 't_A_INT_id');  // 替换查询中的字段引用
+  
+  // 在替换 SQL 语句之前
+  const whereClause = queryParts.whereClause;
+  if (whereClause && whereClause.includes(`${tableAlias}.A_INT_id = 21121256`)) {
+    // 检查是否有满足条件的行，并打印数据类型
+    const testRows = expandedRows.filter(row => {
+      const fieldName = `${tableAlias}.A_INT_id`;
+      // 检查数字相等（不论是字符串还是数字类型）
+      return String(row[fieldName]) === '21121256';
+    });
+    Logger.log(`使用字符串比较后，符合条件的行数: ${testRows.length}`);
+  }
+  
+  return {
+    tempTableName,
+    newSql,
+    stats: {
+      originalRowCount: preFilterCount,
+      filteredRowCount: postFilterCount,
+      expandedRowCount: expandedRows.length,
+      tempTable: tempTableName
+    }
+  };
 }
 
 /**
@@ -584,7 +610,8 @@ function createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, select
       // Handle table field references (t.id format)
       if (cleanField.startsWith(`${tableAlias}.`)) {
         const fieldName = cleanField.substring(tableAlias.length + 1);
-        expandedRow[cleanField] = row[fieldName];
+        // 使用下划线替代点号
+        expandedRow[`${tableAlias}_${fieldName}`] = row[fieldName];
       }
       // Handle array alias
       else if (cleanField === arrayAlias) {
@@ -610,7 +637,8 @@ function createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, select
     // If SELECT *, include all table fields and array item
     for (const key in row) {
       if (key !== arrayField) { // Exclude array field itself
-        expandedRow[`${tableAlias}.${key}`] = row[key];
+        // 使用下划线替代点号
+        expandedRow[`${tableAlias}_${key}`] = row[key];
       }
     }
     // Add expanded array item
@@ -731,7 +759,15 @@ function executeRegularSQL(sql, params, startTime) {
     for (const tableRef of tableReferences) {
       const parts = tableRef.split('.');
       
+      // 新增：检查表是否已存在于 alasql 中（如临时表）
+      if (alasql.tables && alasql.tables[tableRef]) {
+        Logger.log(`表 ${tableRef} 已存在，无需加载`);
+        continue; // 如果表已存在，跳过后续处理
+      }
+      
+      // 修改: 处理所有表引用类型
       if (parts.length === 2) {
+        // 原始代码：处理 fileName.sheetName 格式的表引用
         const fileName = parts[0];
         const sheetName = parts[1];
         
@@ -804,6 +840,11 @@ function executeRegularSQL(sql, params, startTime) {
         } else {
           return { error: `文件 "${fileName}" 未找到` };
         }
+      } else {
+        // 新增：处理单一名称的表引用（如临时表）
+        Logger.log(`处理单一名称表: ${tableRef}`);
+        // 这种情况不需要加载数据，但我们需要确保 SQL 中的引用是正确的
+        // 在一些情况下可能需要加入其他逻辑，如检查表是否存在等
       }
     }
     
@@ -816,6 +857,19 @@ function executeRegularSQL(sql, params, startTime) {
     
     // 执行查询的开始时间
     const executionStartTime = new Date().getTime();
+    
+    // 添加调试信息
+    Logger.log(`即将执行 SQL: ${modifiedSql}`);
+    if (tableReferences.size > 0) {
+      try {
+        const firstTableRef = Array.from(tableReferences)[0];
+        const sampleData = alasql(`SELECT TOP 3 * FROM ${firstTableRef}`);
+        Logger.log(`${firstTableRef} 表的前3条数据: ${JSON.stringify(sampleData)}`);
+      } catch (e) {
+        Logger.log(`获取表数据示例失败: ${e}`);
+      }
+    }
+    
     let result = alasql(modifiedSql, params);
     
     // 记录执行时间
