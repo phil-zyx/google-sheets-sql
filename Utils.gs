@@ -14,7 +14,6 @@ function registerJSONFunctions(alasql) {
       }
       
       const obj = JSON.parse(jsonStr);
-      Logger.log('json:' + obj)
       
       // 处理路径，支持 $.property.array[0] 格式
       if (!path || path === '$') return obj;
