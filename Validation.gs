@@ -289,3 +289,99 @@ function testEvaluateExpression() {
 
 // 直接运行测试
 // testEvaluateExpression();
+
+/**
+ * 执行 SQL 查询并应用验证规则的客户端接口
+ * @param {string} sql - SQL 查询语句
+ * @param {Object} params - 查询参数
+ * @param {string[]} validationRules - 验证规则数组
+ * @returns {Object} - 包含查询结果和验证信息的对象
+ */
+function executeSQLWithValidation(sql, params = {}, validationRules = []) {
+  // 预处理规则（去除空规则）
+  const rules = (validationRules || []).filter(rule => rule && rule.trim().length > 0);
+  
+  try {
+    // 执行原有的SQL查询
+    const result = executeSQL(sql, params);
+    
+    // 如果查询返回错误，直接返回
+    if (result.error) {
+      return result;
+    }
+    
+    // 验证结果对象
+    const validationResults = {
+      totalRows: Array.isArray(result.data) ? result.data.length : 0,
+      errorRows: 0,
+      errors: []
+    };
+    
+    // 如果有验证规则和有效数据，应用验证
+    if (rules.length > 0 && Array.isArray(result.data) && result.data.length > 0) {
+      // 处理每一行数据
+      result.data.forEach((row, rowIndex) => {
+        // 初始化验证状态
+        row._validationStatus = 'valid';
+        row._validationErrors = [];
+        
+        // 检查每条规则
+        rules.forEach((rule, ruleIndex) => {
+          const isValid = evaluateExpression(rule, row);
+          
+          if (!isValid) {
+            // 获取左右值用于错误消息
+            const parts = rule.split('=').map(p => p.trim());
+            let leftValue = '(未知)';
+            let rightValue = '(未知)';
+            
+            if (parts.length === 2) {
+              if (parts[0] in row) leftValue = JSON.stringify(row[parts[0]]);
+              if (parts[1] in row) rightValue = JSON.stringify(row[parts[1]]);
+            }
+            
+            // 标记不符合条件的行
+            row._validationStatus = 'invalid';
+            row._validationErrors.push({
+              rule: rule,
+              message: `规则 #${ruleIndex + 1} 验证失败: ${rule}
+                左侧值: ${leftValue}
+                右侧值: ${rightValue}`
+            });
+            
+            // 添加到错误汇总
+            validationResults.errors.push({
+              rowIndex: rowIndex,
+              rule: rule,
+              data: {...row}
+            });
+            
+            // 统计错误行数
+            if (row._validationStatus === 'invalid') {
+              validationResults.errorRows++;
+            }
+          }
+        });
+      });
+    }
+    
+    // 将验证结果添加到返回对象中
+    result.validation = validationResults;
+    
+    // 添加验证相关信息到统计中
+    if (result.stats) {
+      result.stats.sql = sql;
+      result.stats.validationRules = rules;
+    }
+    
+    return result;
+  } catch (e) {
+    Logger.log('验证规则执行错误: ' + e);
+    return { 
+      error: '执行验证规则失败: ' + e.toString(),
+      stats: {
+        executionTime: 0
+      }
+    };
+  }
+}

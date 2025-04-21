@@ -249,3 +249,77 @@ function tryParseJSON(str) {
     return null;
   }
 }
+
+/**
+ * 获取 Google Drive 中所有可访问的 Sheet 文件
+ * @param {string} [folderId] - 可选的 Google Drive 文件夹 ID，如果提供则只获取该文件夹下的文件
+ * @returns {Object[]} - 包含 id, name 的 Sheet 文件列表
+ */
+function getAllSheets() {
+  try {
+    const result = [];
+    const config = getConfig();
+    const rootFolder = DriveApp.getFolderById(config.drive.rootFolderId);
+    
+    // 递归获取文件夹中的所有 Sheet 文件
+    function processFolder(folder) {
+      // 获取当前文件夹中的所有 Sheet 文件
+      const files = folder.getFilesByType(MimeType.GOOGLE_SHEETS);
+      while (files.hasNext()) {
+        const file = files.next();
+        result.push({
+          id: file.getId(),
+          name: file.getName(),
+          lastUpdated: file.getLastUpdated().toISOString(),
+          url: file.getUrl()
+        });
+      }
+      
+      // 递归处理子文件夹
+      const subFolders = folder.getFolders();
+      while (subFolders.hasNext()) {
+        const subFolder = subFolders.next();
+        processFolder(subFolder);
+      }
+    }
+    
+    // 开始处理根文件夹
+    processFolder(rootFolder);
+    return result;
+    
+  } catch (e) {
+    Logger.log('获取 Sheet 文件失败: ' + e.toString());
+    return [];
+  }
+}
+
+/**
+ * 在所有文件中搜索特定名称的Sheet文件
+ * @param {string} fileName - 要搜索的Sheet文件的名称
+ * @returns {Object[]} - 包含 id, name, lastUpdated, url 的 Sheet 文件列表
+ */
+function findSheetByName(fileName) {
+  try {
+    // 使用Drive API直接按名称搜索文件
+    const files = DriveApp.getFilesByName(fileName);
+    const results = [];
+    
+    while (files.hasNext()) {
+      const file = files.next();
+      // 只返回Google Sheets类型的文件
+      if (file.getMimeType() === MimeType.GOOGLE_SHEETS) {
+        results.push({
+          id: file.getId(),
+          name: file.getName(),
+          lastUpdated: file.getLastUpdated().toISOString(),
+          url: file.getUrl()
+        });
+      }
+    }
+    
+    return results;
+  } catch (e) {
+    Logger.log('根据名称查找Sheet文件失败: ' + e.toString());
+    return [];
+  }
+}

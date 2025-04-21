@@ -8,7 +8,8 @@
             "Config.gs - 项目配置",
             "Config_template.gs - 配置模板",
             "Validation.gs - 验证函数",
-            "CheckWorkflow.gs - 工作流检查功能"
+            "CheckWorkflow.gs - 工作流检查功能",
+            "Template.gs - 模板功能"
         ],
         "ui": [
             "Index.html - 主界面",
