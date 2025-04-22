@@ -109,7 +109,13 @@ function executeSQL(sql, params = {}) {
     }
 
     // 检查是否存在 UNNEST 操作
+    // 检查是否存在 UNNEST 操作
     const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+UNNEST\(\s*(\2\.[a-zA-Z0-9_]+)\s*\)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/i);
+    
+    let modifiedSql = sql;
+    let expansionStats = null;
+    
+    // 如果存在 UNNEST 操作，进行预处理
     
     let modifiedSql = sql;
     let expansionStats = null;
@@ -142,6 +148,21 @@ function executeSQL(sql, params = {}) {
     }
     
     return result;
+      // 预处理 UNNEST 操作，返回临时表名和修改后的SQL
+      const { tempTableName, newSql, stats } = preprocessArrayExpansion(sql, modifiedMatch);
+      modifiedSql = newSql;
+      expansionStats = stats;
+    }
+    
+    // 执行处理后的SQL查询（无论是否包含UNNEST操作）
+    const result = executeRegularSQL(modifiedSql, params, startTime);
+    
+    // 如果有数组展开的统计信息，添加到结果中
+    if (expansionStats && result.stats) {
+      result.stats.arrayExpansion = expansionStats;
+    }
+    
+    return result;
 
   } catch (e) {
     Logger.log("查询错误: " + e.toString());
@@ -159,9 +180,15 @@ function executeSQL(sql, params = {}) {
  * @param {string} sql - 原始SQL
  * @param {Array} arrayJoinMatch - UNNEST匹配信息
  * @returns {Object} - 处理后的SQL和统计信息
+ * 预处理包含 UNNEST 操作的 SQL
+ * @param {string} sql - 原始SQL
+ * @param {Array} arrayJoinMatch - UNNEST匹配信息
+ * @returns {Object} - 处理后的SQL和统计信息
  */
 function preprocessArrayExpansion(sql, arrayJoinMatch) {
+function preprocessArrayExpansion(sql, arrayJoinMatch) {
   const tableName = arrayJoinMatch[1];
+  const tableAlias = arrayJoinMatch[2];  // 原始表的别名，例如 't'
   const tableAlias = arrayJoinMatch[2];  // 原始表的别名，例如 't'
   const arrayField = arrayJoinMatch[3];
   const arrayAlias = arrayJoinMatch[4];
@@ -914,7 +941,15 @@ function executeRegularSQL(sql, params, startTime) {
       }
       
       // 修改: 处理所有表引用类型
+      // 新增：检查表是否已存在于 alasql 中（如临时表）
+      if (alasql.tables && alasql.tables[tableRef]) {
+        Logger.log(`表 ${tableRef} 已存在，无需加载`);
+        continue; // 如果表已存在，跳过后续处理
+      }
+      
+      // 修改: 处理所有表引用类型
       if (parts.length === 2) {
+        // 原始代码：处理 fileName.sheetName 格式的表引用
         // 原始代码：处理 fileName.sheetName 格式的表引用
         const fileName = parts[0];
         const sheetName = parts[1];
@@ -988,6 +1023,11 @@ function executeRegularSQL(sql, params, startTime) {
         } else {
           return { error: `文件 "${fileName}" 未找到` };
         }
+      } else {
+        // 新增：处理单一名称的表引用（如临时表）
+        Logger.log(`处理单一名称表: ${tableRef}`);
+        // 这种情况不需要加载数据，但我们需要确保 SQL 中的引用是正确的
+        // 在一些情况下可能需要加入其他逻辑，如检查表是否存在等
       } else {
         // 新增：处理单一名称的表引用（如临时表）
         Logger.log(`处理单一名称表: ${tableRef}`);
