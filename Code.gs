@@ -100,7 +100,7 @@ function executeSQL(sql, params = {}) {
   const startTime = new Date().getTime();
   
   try {
-    // 确保 AlaSQL 已正确初始化
+    // Ensure AlaSQL is properly initialized
     if (!alasql || typeof alasql !== 'function') {
       const initSuccess = initAlaSQL();
       if (!initSuccess) {
@@ -108,19 +108,13 @@ function executeSQL(sql, params = {}) {
       }
     }
 
-    // 检查是否存在 UNNEST 操作
-    // 检查是否存在 UNNEST 操作
+    // Check for UNNEST operations
     const arrayJoinMatch = sql.match(/FROM\s+([a-zA-Z0-9_\.]+)\s+([a-zA-Z0-9_]+)\s+CROSS\s+JOIN\s+UNNEST\(\s*(\2\.[a-zA-Z0-9_]+)\s*\)(?:\s+AS)?\s+([a-zA-Z0-9_]+)/i);
     
     let modifiedSql = sql;
     let expansionStats = null;
     
-    // 如果存在 UNNEST 操作，进行预处理
-    
-    let modifiedSql = sql;
-    let expansionStats = null;
-    
-    // 如果存在 UNNEST 操作，进行预处理
+    // If UNNEST operation exists, preprocess it
     if (arrayJoinMatch) {
       const fieldParts = arrayJoinMatch[3].split('.');
       const arrayField = fieldParts[1];
@@ -133,37 +127,21 @@ function executeSQL(sql, params = {}) {
         arrayJoinMatch[4]
       ];
       
-      // 预处理 UNNEST 操作，返回临时表名和修改后的SQL
+      // Preprocess UNNEST operation, return temp table name and modified SQL
       const { tempTableName, newSql, stats } = preprocessArrayExpansion(sql, modifiedMatch);
       modifiedSql = newSql;
       expansionStats = stats;
     }
     
-    // 执行处理后的SQL查询（无论是否包含UNNEST操作）
+    // Execute the processed SQL query
     const result = executeRegularSQL(modifiedSql, params, startTime);
     
-    // 如果有数组展开的统计信息，添加到结果中
+    // If array expansion stats exist, add to result
     if (expansionStats && result.stats) {
       result.stats.arrayExpansion = expansionStats;
     }
     
     return result;
-      // 预处理 UNNEST 操作，返回临时表名和修改后的SQL
-      const { tempTableName, newSql, stats } = preprocessArrayExpansion(sql, modifiedMatch);
-      modifiedSql = newSql;
-      expansionStats = stats;
-    }
-    
-    // 执行处理后的SQL查询（无论是否包含UNNEST操作）
-    const result = executeRegularSQL(modifiedSql, params, startTime);
-    
-    // 如果有数组展开的统计信息，添加到结果中
-    if (expansionStats && result.stats) {
-      result.stats.arrayExpansion = expansionStats;
-    }
-    
-    return result;
-
   } catch (e) {
     Logger.log("查询错误: " + e.toString());
     return {
@@ -180,43 +158,37 @@ function executeSQL(sql, params = {}) {
  * @param {string} sql - 原始SQL
  * @param {Array} arrayJoinMatch - UNNEST匹配信息
  * @returns {Object} - 处理后的SQL和统计信息
- * 预处理包含 UNNEST 操作的 SQL
- * @param {string} sql - 原始SQL
- * @param {Array} arrayJoinMatch - UNNEST匹配信息
- * @returns {Object} - 处理后的SQL和统计信息
  */
 function preprocessArrayExpansion(sql, arrayJoinMatch) {
-function preprocessArrayExpansion(sql, arrayJoinMatch) {
   const tableName = arrayJoinMatch[1];
-  const tableAlias = arrayJoinMatch[2];  // 原始表的别名，例如 't'
-  const tableAlias = arrayJoinMatch[2];  // 原始表的别名，例如 't'
+  const tableAlias = arrayJoinMatch[2];  // Original table alias, e.g., 't'
   const arrayField = arrayJoinMatch[3];
   const arrayAlias = arrayJoinMatch[4];
   
-  // 解析查询组件
+  // Parse query components
   const queryParts = parseQueryComponents(sql);
   
-  // 记录原始查询信息
+  // Log original query info
   Logger.log(`处理UNNEST操作: 表=${tableName}, 别名=${tableAlias}, 数组字段=${arrayField}, 数组别名=${arrayAlias}`);
   Logger.log(`选择的字段: ${JSON.stringify(queryParts.selectedFields)}`);
   
-  // 提取主表过滤条件
+  // Extract primary table filters
   const primaryTableFilters = extractPrimaryTableFilters(queryParts.whereClause, tableAlias);
   
-  // 加载数据并应用主表过滤
+  // Load data and apply primary table filters
   const { data, headers, filtered } = loadFilteredTableData(tableName, primaryTableFilters);
   if (!data) {
     throw new Error(`无法从 ${tableName} 加载数据`);
   }
   
-  // 记录统计信息
+  // Record stats
   const preFilterCount = data.length - 1;
   const postFilterCount = filtered ? filtered : preFilterCount;
   
-  // 转换原始数据为行对象
+  // Convert raw data to row objects
   const rows = convertToRowObjects(data, headers);
   
-  // 记录第一行原始数据，帮助调试
+  // Record first row original data for debugging
   if (rows.length > 0) {
     Logger.log(`第一行原始数据: ${JSON.stringify(rows[0])}`);
     if (arrayField in rows[0]) {
@@ -230,19 +202,19 @@ function preprocessArrayExpansion(sql, arrayJoinMatch) {
     }
   }
   
-  // 执行数组展开
+  // Execute array expansion
   const expandedRows = expandArrayData(rows, tableAlias, arrayField, arrayAlias, queryParts.selectedFields);
   
-  // 创建临时表存放展开后的数据
+  // Create temp table to store expanded data
   const tempTableName = 'expanded_' + Math.random().toString(36).substring(2, 8);
   alasql(`CREATE TABLE ${tempTableName}`);
   alasql(`INSERT INTO ${tempTableName} SELECT * FROM ?`, [expandedRows]);
   
-  // 查看临时表数据
+  // View temp table data
   const sampleData = alasql(`SELECT TOP 3 * FROM ${tempTableName}`);
   Logger.log(`${tempTableName} 表的前3条数据: ${JSON.stringify(sampleData)}`);
   
-  // 查看临时表结构
+  // View temp table structure
   const columns = [];
   if (sampleData.length > 0) {
     for (const key in sampleData[0]) {
@@ -251,7 +223,7 @@ function preprocessArrayExpansion(sql, arrayJoinMatch) {
     Logger.log(`临时表列名: ${columns.join(', ')}`);
   }
   
-  // 查找SQL中的所有JOIN类型
+  // Find all JOIN types in SQL
   const joinTypes = [];
   const joinRegex = /(LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\s+JOIN/gi;
   let joinMatch;
@@ -259,17 +231,17 @@ function preprocessArrayExpansion(sql, arrayJoinMatch) {
     if (joinMatch[1]) {
       joinTypes.push(joinMatch[1].toUpperCase());
     } else {
-      joinTypes.push("INNER"); // 默认JOIN类型是INNER
+      joinTypes.push("INNER"); // Default JOIN type is INNER
     }
   }
   Logger.log(`SQL中的JOIN类型: ${joinTypes.join(', ')}`);
   
-  // 检测SQL中是否包含LEFT JOIN等需要特殊处理的JOIN类型
+  // Detect SQL for LEFT JOIN etc. that need special handling
   const hasLeftJoin = /LEFT\s+JOIN/i.test(sql);
   const hasRightJoin = /RIGHT\s+JOIN/i.test(sql);
   const hasFullJoin = /FULL\s+JOIN/i.test(sql);
   
-  // 特殊处理LEFT JOIN和其他外连接的情况
+  // Special handling for LEFT JOIN and other outer joins
   let newSql = sql;
   if (hasLeftJoin || hasRightJoin || hasFullJoin) {
     Logger.log("Detected outer join (LEFT/RIGHT/FULL JOIN), using special handling");
@@ -297,14 +269,14 @@ function preprocessArrayExpansion(sql, arrayJoinMatch) {
     
     Logger.log(`After fixing array references: ${newSql}`);
   } else {
-    // 对于标准JOIN或无JOIN的查询，简单替换FROM子句
+    // For standard JOIN or no JOIN queries, simply replace FROM clause
     newSql = sql.replace(
       arrayJoinMatch[0], 
       `FROM ${tempTableName} ${tableAlias}`
     );
   }
   
-  // 记录SQL变化
+  // Record SQL changes
   Logger.log(`原始SQL: ${sql}`);
   Logger.log(`修改后SQL: ${newSql}`);
   
@@ -345,22 +317,22 @@ function expandArrayData(rows, tableAlias, arrayField, arrayAlias, selectedField
   let resultRows = [];
   
   rows.forEach((row, index) => {
-    // 检查字段是否存在
+    // Check if field exists
     if (arrayField in row) {
       const arrayData = row[arrayField];
       
-      // 检查是否为数组
+      // Check if it's an array
       if (Array.isArray(arrayData)) {
-        // 检查数组是否为空
+        // Check if array is empty
         if (arrayData.length > 0) {
-          // 对每个数组元素创建一个新行
+          // Create a new row for each array element
           arrayData.forEach((item) => {
             const expandedRow = createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, selectedFields);
             resultRows.push(expandedRow);
           });
         }
       } else {
-        // 尝试解析JSON字符串
+        // Try to parse JSON string
         if (typeof arrayData === 'string' && (arrayData.startsWith('[') || arrayData.startsWith('{'))) {
           try {
             const parsedData = JSON.parse(arrayData);
@@ -371,19 +343,19 @@ function expandArrayData(rows, tableAlias, arrayField, arrayAlias, selectedField
               });
             }
           } catch (e) {
-            // 忽略解析错误
+            // Ignore parsing error
           }
         }
       }
     }
   });
   
-  // 如果没有展开任何行，创建一个空结果行
+  // If no rows were expanded, create an empty result row
   if (resultRows.length === 0) {
-    // 创建一个空行，保留基本字段
+    // Create an empty row, preserving basic fields
     const emptyRow = { __empty_result: true };
     
-    // 添加表字段的占位符
+    // Add placeholder for table fields
     if (rows.length > 0) {
       const firstRow = rows[0];
       for (const key in firstRow) {
@@ -393,7 +365,7 @@ function expandArrayData(rows, tableAlias, arrayField, arrayAlias, selectedField
       }
     }
     
-    // 添加数组别名字段的占位符
+    // Add placeholder for array alias field
     emptyRow[arrayAlias] = null;
     
     resultRows.push(emptyRow);
@@ -415,45 +387,45 @@ function expandArrayData(rows, tableAlias, arrayField, arrayAlias, selectedField
 function createExpandedRow(row, item, tableAlias, arrayField, arrayAlias, selectedFields) {
   const expandedRow = {};
   
-  // 保留所有原始行数据，保持原始字段名
+  // Preserve all original row data, keeping original field names
   for (const key in row) {
-    if (key !== arrayField) { // 排除数组字段本身
+    if (key !== arrayField) { // Exclude array field itself
       expandedRow[key] = row[key];
     }
   }
   
-  // 添加数组项字段
+  // Add array item field
   if (typeof item === 'object' && item !== null && !Array.isArray(item)) {
-    // 对象类型的数组项 - 展开其属性
-    expandedRow[arrayAlias] = item; // 保留完整对象
+    // Object type array items - expand their properties
+    expandedRow[arrayAlias] = item; // Preserve full object
     
-    // 也添加每个属性作为单独的字段
+    // Also add each property as a separate field
     for (const key in item) {
-      expandedRow[`${arrayAlias}.${key}`] = item[key]; // 使用点号语法而不是下划线
+      expandedRow[`${arrayAlias}.${key}`] = item[key]; // Use dot syntax instead of underscore
     }
   } else {
-    // 简单值类型的数组项
+    // Simple value type array items
     expandedRow[arrayAlias] = item;
   }
   
-  // 如果提供了选定字段列表，确保它们都存在（即使为null）
+  // If selected fields list is provided, ensure they exist (even as null)
   if (selectedFields && selectedFields.length > 0) {
     selectedFields.forEach(fieldExpr => {
-      // 处理 "alias.field" 格式的字段引用
+      // Handle "alias.field" format field references
       if (fieldExpr.includes('.')) {
         const [alias, field] = fieldExpr.split('.');
-        // 只处理与当前表别名或数组别名匹配的字段
+        // Only handle fields that match current table alias or array alias
         if (alias === tableAlias || alias === arrayAlias) {
           if (!(fieldExpr in expandedRow)) {
             expandedRow[fieldExpr] = null;
           }
         }
       }
-      // 处理可能的AS别名
+      // Handle possible AS aliases
       else if (fieldExpr.toLowerCase().includes(' as ')) {
         const parts = fieldExpr.split(/\s+as\s+/i);
         const aliasName = parts[1].trim();
-        // 为别名创建字段，如果需要
+        // Create field for alias if needed
         if (!(aliasName in expandedRow)) {
           expandedRow[aliasName] = null;
         }
@@ -482,7 +454,7 @@ function escapeRegExp(string) {
 function extractPrimaryTableFilters(whereClause, tableAlias) {
   if (!whereClause) return null;
   
-  // 寻找针对主表的简单过滤条件 (如 t.id = 123)
+  // Find simple filter conditions for the main table (e.g., t.id = 123)
   const tableFilterRegex = new RegExp(`${tableAlias}\\.(\\w+)\\s*(=|>|<|>=|<=|!=|<>|IN|LIKE)\\s*(.+?)(?:\\s+(?:AND|OR)\\s+|$)`, 'gi');
   const matches = [...whereClause.matchAll(tableFilterRegex)];
   
@@ -494,7 +466,7 @@ function extractPrimaryTableFilters(whereClause, tableAlias) {
     const operator = match[2].toUpperCase();
     let value = match[3].trim();
     
-    // 处理引号和数字
+    // Handle quotes and numbers
     if ((value.startsWith("'") && value.endsWith("'")) || 
         (value.startsWith('"') && value.endsWith('"'))) {
       value = value.substring(1, value.length - 1);
@@ -583,12 +555,12 @@ function loadFilteredTableData(tableName, filters) {
           if (cellValue == filter.value) includeRow = false;
           break;
         case 'IN':
-          // 简单处理IN，假设值是逗号分隔的列表
+          // Simple handling for IN, assuming value is comma-separated list
           const inValues = filter.value.replace(/[\(\)]/g, '').split(',').map(v => v.trim());
           if (!inValues.includes(String(cellValue))) includeRow = false;
           break;
         case 'LIKE':
-          // 简单处理LIKE，将SQL通配符转换为正则表达式
+          // Simple handling for LIKE, converting SQL wildcards to regular expression
           const pattern = filter.value.replace(/%/g, '.*').replace(/_/g, '.');
           const regex = new RegExp(`^${pattern}$`, 'i');
           if (!regex.test(String(cellValue))) includeRow = false;
@@ -606,7 +578,7 @@ function loadFilteredTableData(tableName, filters) {
   return { 
     data: filteredData, 
     headers, 
-    filtered: filteredData.length - 1 // 过滤后的行数（不包括表头）
+    filtered: filteredData.length - 1 // Filtered row count (excluding header)
   };
 }
 
@@ -620,9 +592,9 @@ function loadFilteredTableData(tableName, filters) {
 function extractSecondaryFilters(whereClause, tableAlias, arrayAlias) {
   if (!whereClause) return null;
   
-  // 提取数组相关的过滤条件或其他未处理的条件
-  // 由于复杂性，这里可能需要根据实际情况调整
-  // 简单实现：如果有主表过滤条件，就保留原始WHERE子句
+  // Extract array-related filters or other unprocessed conditions
+  // Due to complexity, this might need to be adjusted based on actual situation
+  // Simple implementation: If there's main table filter, keep original WHERE clause
   return whereClause;
 }
 
@@ -666,11 +638,11 @@ function loadTableData(tableName) {
  * @returns {Object} - Parsed query components
  */
 function parseQueryComponents(sql) {
-  // 改进：使用更健壮的SELECT子句提取方法，处理嵌套查询和子查询
+  // Improved: Use more robust SELECT clause extraction method, handling nested queries and subqueries
   let selectedFields = [];
   
   try {
-    // 提取SELECT和FROM之间的内容，但要考虑嵌套的子查询
+    // Extract SELECT and FROM content, but consider nested subqueries
     const selectRegex = /SELECT\s+([\s\S]+?)\s+FROM/i;
     const selectMatch = sql.match(selectRegex);
     
@@ -678,16 +650,16 @@ function parseQueryComponents(sql) {
       const selectClause = selectMatch[1].trim();
       
       if (selectClause !== '*') {
-        // 改进：使用更复杂的逻辑处理逗号分隔列表，考虑嵌套括号和引号
+        // Improved: Use more complex logic to handle comma-separated lists, considering nested parentheses and quotes
         selectedFields = splitSelectFields(selectClause);
       }
     }
   } catch (e) {
     Logger.log(`解析SELECT子句出错: ${e}`);
-    // 返回空数组表示无法解析字段，将使用 SELECT *
+    // Return empty array indicating unable to parse fields, will use SELECT *
   }
   
-  // 提取WHERE、ORDER BY、LIMIT子句的代码保持不变
+  // Extract WHERE, ORDER BY, LIMIT clauses
   const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|\s*$)/i);
   const whereClause = whereMatch ? whereMatch[1] : null;
   
@@ -717,11 +689,11 @@ function splitSelectFields(selectClause) {
   let inQuote = false;
   let quoteChar = '';
   
-  // 逐字符分析SELECT子句
+  // Analyze SELECT clause character by character
   for (let i = 0; i < selectClause.length; i++) {
     const char = selectClause[i];
     
-    // 处理引号
+    // Handle quotes
     if ((char === "'" || char === '"') && (i === 0 || selectClause[i-1] !== '\\')) {
       if (!inQuote) {
         inQuote = true;
@@ -731,7 +703,7 @@ function splitSelectFields(selectClause) {
       }
     }
     
-    // 处理括号 (只在不在引号内时计数)
+    // Handle parentheses (only count when not in quotes)
     if (!inQuote) {
       if (char === '(' || char === '[' || char === '{') {
         bracketCount++;
@@ -740,7 +712,7 @@ function splitSelectFields(selectClause) {
       }
     }
     
-    // 处理字段分隔符逗号 (只在不在引号内且没有未闭合的括号时)
+    // Handle field separator comma (only when not in quotes and no unclosed parentheses)
     if (char === ',' && !inQuote && bracketCount === 0) {
       fields.push(currentField.trim());
       currentField = '';
@@ -749,7 +721,7 @@ function splitSelectFields(selectClause) {
     }
   }
   
-  // 添加最后一个字段
+  // Add last field
   if (currentField.trim()) {
     fields.push(currentField.trim());
   }
@@ -851,7 +823,7 @@ function applyLimit(rows, limit) {
 
 function extractRegularTableReferences(sql) {
   // Get all direct table references from FROM and JOIN clauses
-  const regex = /(?:FROM|JOIN)\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+))?/gi;
+  const regex = /(?:FROM|(?:LEFT|RIGHT|INNER|OUTER|CROSS|FULL)?\s*JOIN)\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)(?:\s+(?:AS\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+))?/gi;
   const matches = [...sql.matchAll(regex)];
   const tableReferences = new Set();
   
@@ -868,37 +840,34 @@ function extractRegularTableReferences(sql) {
     }
   });
   
-  // Additional regex to catch tables in LEFT JOIN specifically
-  // This catches references like "LEFT JOIN table" anywhere in the query
-  const leftJoinRegex = /LEFT\s+JOIN\s+([a-zA-Z0-9_\.\u4e00-\u9fa5]+)/gi;
-  const leftJoinMatches = [...sql.matchAll(leftJoinRegex)];
-  
-  leftJoinMatches.forEach(match => {
-    const tableName = match[1].trim();
-    if (!tableName.startsWith('expanded_')) {
-      tableReferences.add(tableName);
-      Logger.log(`检测到LEFT JOIN表引用: ${tableName}`);
-    }
-  });
-  
-  // Add specific check for tables that might be used with CAST or JSON functions in LEFT JOIN conditions
-  if (sql.includes('LEFT JOIN') && (sql.includes('JSON_EXTRACT') || sql.includes('CAST'))) {
-    Logger.log("检测到复杂LEFT JOIN查询，查找额外表引用");
-    // Extract all potential table aliases from ON clauses
-    const onClauseRegex = /ON\s+(?:CAST\s*\()?\s*([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)/gi;
-    const onMatches = [...sql.matchAll(onClauseRegex)];
+  // Enhance JSON function detection in JOIN conditions
+  if (sql.includes('JOIN') && sql.includes('JSON_EXTRACT')) {
+    Logger.log("检测到带有 JSON_EXTRACT 的 JOIN 查询，特殊处理");
     
-    onMatches.forEach(match => {
-      const alias = match[1];
-      // Find the actual table for this alias
-      const aliasDefRegex = new RegExp(`(FROM|JOIN)\\s+([a-zA-Z0-9_\\.\\u4e00-\\u9fa5]+)(?:\\s+(?:AS\\s+)?${alias})`, 'i');
-      const aliasMatch = sql.match(aliasDefRegex);
-      if (aliasMatch && aliasMatch[2]) {
-        const actualTable = aliasMatch[2].trim();
-        if (!actualTable.startsWith('expanded_')) {
-          tableReferences.add(actualTable);
-          Logger.log(`从ON子句别名 ${alias} 检测到表引用: ${actualTable}`);
-        }
+    // Add special handling for JSON_EXTRACT in ON clauses
+    const jsonExtractJoinRegex = /ON\s+([a-zA-Z0-9_\.]+)\s*=\s*JSON_EXTRACT\s*\(\s*([a-zA-Z0-9_\.]+)\s*,\s*['"]\$\.([a-zA-Z0-9_]+)['"]\s*\)/gi;
+    const jsonExtractMatches = [...sql.matchAll(jsonExtractJoinRegex)];
+    
+    jsonExtractMatches.forEach(match => {
+      const leftField = match[1];
+      const rightField = match[2];
+      
+      // Extract table aliases from field references
+      const leftAlias = leftField.split('.')[0];
+      const rightAlias = rightField.split('.')[0];
+      
+      // Find actual tables for these aliases
+      const leftTableMatch = sql.match(new RegExp(`(FROM|JOIN)\\s+([a-zA-Z0-9_\\.\\u4e00-\\u9fa5]+)(?:\\s+(?:AS\\s+)?${leftAlias})`, 'i'));
+      const rightTableMatch = sql.match(new RegExp(`(FROM|JOIN)\\s+([a-zA-Z0-9_\\.\\u4e00-\\u9fa5]+)(?:\\s+(?:AS\\s+)?${rightAlias})`, 'i'));
+      
+      if (leftTableMatch && leftTableMatch[2]) {
+        tableReferences.add(leftTableMatch[2].trim());
+        Logger.log(`从JSON_EXTRACT JOIN条件左侧检测到表: ${leftTableMatch[2].trim()}`);
+      }
+      
+      if (rightTableMatch && rightTableMatch[2]) {
+        tableReferences.add(rightTableMatch[2].trim());
+        Logger.log(`从JSON_EXTRACT JOIN条件右侧检测到表: ${rightTableMatch[2].trim()}`);
       }
     });
   }
@@ -909,56 +878,54 @@ function extractRegularTableReferences(sql) {
 // 处理普通SQL查询
 function executeRegularSQL(sql, params, startTime) {
   try {
-    // 记录不同阶段的时间统计
+    // Record different stage timings
     const timings = {
       initialization: new Date().getTime() - startTime,
       tableLoading: 0,
       execution: 0,
       formatting: 0
     };
-    // 提取表引用
+    // Extract table references
     const tableReferences = extractRegularTableReferences(sql);
     Logger.log("查询引用的表: " + JSON.stringify(Array.from(tableReferences)));
     
-    // 创建替换表映射和修改后的SQL
+    // Create replacement table mapping and modified SQL
     const tableMapping = {};
     let modifiedSql = sql;
     
-    // 存储原表的列顺序
+    // Store original table column order
     const tableColumnOrders = {};
     
-    // 加载表数据的开始时间
+    // Load table data start time
     const loadingStartTime = new Date().getTime();
     
-    // 加载表数据 
+    // Load table data 
     for (const tableRef of tableReferences) {
       const parts = tableRef.split('.');
       
-      // 新增：检查表是否已存在于 alasql 中（如临时表）
+      // New: Check if table already exists in alasql (e.g., temp tables)
       if (alasql.tables && alasql.tables[tableRef]) {
         Logger.log(`表 ${tableRef} 已存在，无需加载`);
-        continue; // 如果表已存在，跳过后续处理
+        continue; // If table exists, skip subsequent processing
       }
       
-      // 修改: 处理所有表引用类型
-      // 新增：检查表是否已存在于 alasql 中（如临时表）
+      // New: Check if table already exists in alasql (e.g., temp tables)
       if (alasql.tables && alasql.tables[tableRef]) {
         Logger.log(`表 ${tableRef} 已存在，无需加载`);
-        continue; // 如果表已存在，跳过后续处理
+        continue; // If table exists, skip subsequent processing
       }
       
-      // 修改: 处理所有表引用类型
+      // New: Handle all table reference types
       if (parts.length === 2) {
-        // 原始代码：处理 fileName.sheetName 格式的表引用
-        // 原始代码：处理 fileName.sheetName 格式的表引用
+        // Process fileName.sheetName format table references
         const fileName = parts[0];
         const sheetName = parts[1];
         
-        // 创建表名
+        // Create table name
         const randomPrefix = 'tbl' + Math.random().toString(36).substring(2, 8);
         const alasqlTableName = `${randomPrefix}`;
         
-        // 更新SQL中的表引用和记录映射 - 这部分不变
+        // Update SQL references and record mapping - this part remains unchanged
         let matchPattern = tableRef.replace(/\./g, '\\.').replace(/[\[\]\(\)\{\}\*\+\?\|\^\$]/g, '\\$&');
         const tableAliasRegex = new RegExp(`${matchPattern}\\s+(?:AS\\s+)?([a-zA-Z0-9_\u4e00-\u9fa5]+)`, 'gi');
         const tableAliasMatches = [...modifiedSql.matchAll(tableAliasRegex)];
@@ -974,7 +941,7 @@ function executeRegularSQL(sql, params, startTime) {
           modifiedSql = modifiedSql.replace(tableRegex, alasqlTableName);
         }
         
-        // 记录表映射关系
+        // Record table mapping relationship
         tableMapping[tableRef] = alasqlTableName;
         Logger.log(`表映射: ${tableRef} -> ${alasqlTableName}`);
         const files = findSheetByName(fileName);
@@ -984,21 +951,21 @@ function executeRegularSQL(sql, params, startTime) {
           const sheet = spreadsheet.getSheetByName(sheetName);
           
           if (sheet) {
-            // 直接从表单中获取数据并创建表
+            // Get data directly from sheet and create table
             const data = sheet.getDataRange().getValues();
             
-            // 将数据转换为对象数组（表头作为列名）
+            // Convert data to array of objects (header as column names)
             const headers = data[0];
             const rows = [];
             
-            // 存储原始列顺序
+            // Store original column order
             const filteredHeaders = [...headers].filter(header => !isExcludedColumn(header));
             tableColumnOrders[alasqlTableName] = filteredHeaders;
             
             for (let i = 1; i < data.length; i++) {
               const row = {};
               for (let j = 0; j < headers.length; j++) {
-                // 跳过被排除的列名
+                // Skip excluded column names
                 if (!isExcludedColumn(headers[j])) {
                   row[headers[j]] = data[i][j];
                 }
@@ -1006,17 +973,17 @@ function executeRegularSQL(sql, params, startTime) {
               rows.push(row);
             }
             
-            // 使用修改后的表名创建表
+            // Use modified table name to create table
             Logger.log(`创建表 ${alasqlTableName} (原始: ${tableRef})`);
             alasql(`CREATE TABLE ${alasqlTableName}`);
             
-            // 一次性插入所有数据以提高性能
+            // Insert all data at once for performance
             if (rows.length > 0) {
               alasql(`INSERT INTO ${alasqlTableName} SELECT * FROM ?`, [rows]);
               Logger.log(`已加载表 ${alasqlTableName}，共 ${rows.length} 条记录`);
             }
           } else {
-            // 创建空表
+            // Create empty table
             alasql(`CREATE TABLE ${alasqlTableName} (dummy INT)`);
             Logger.log(`警告: 表 ${tableRef} 不存在或没有数据，创建了空表 ${alasqlTableName}`);
           }
@@ -1024,50 +991,50 @@ function executeRegularSQL(sql, params, startTime) {
           return { error: `文件 "${fileName}" 未找到` };
         }
       } else {
-        // 新增：处理单一名称的表引用（如临时表）
+        // New: Handle single name table references (e.g., temp tables)
         Logger.log(`处理单一名称表: ${tableRef}`);
-        // 这种情况不需要加载数据，但我们需要确保 SQL 中的引用是正确的
-        // 在一些情况下可能需要加入其他逻辑，如检查表是否存在等
-      } else {
-        // 新增：处理单一名称的表引用（如临时表）
-        Logger.log(`处理单一名称表: ${tableRef}`);
-        // 这种情况不需要加载数据，但我们需要确保 SQL 中的引用是正确的
-        // 在一些情况下可能需要加入其他逻辑，如检查表是否存在等
+        // This case doesn't need to load data, but we need to ensure references in SQL are correct
       }
     }
     
-    // 记录表加载时间
+    // Record table loading time
     timings.tableLoading = new Date().getTime() - loadingStartTime;
     
-    // 执行修改后的查询
+    // Execute modified query
     Logger.log("原始查询: " + sql);
     Logger.log("修改后查询: " + modifiedSql);
     
-    // 执行查询的开始时间
+    // Query execution start time
     const executionStartTime = new Date().getTime();
     
-    // 添加调试信息
-    Logger.log(`即将执行 SQL: ${modifiedSql}`);
-    
-    // Log available tables before executing
-    const availableTables = Object.keys(alasql.tables || {});
-    Logger.log(`可用的表有: ${availableTables.join(', ')}`);
+    // 在SQL执行前，打印每个表的表头和第一行数据
+    Logger.log("===== 表数据调试信息 =====");
+    for (const tableName in alasql.tables) {
+      Logger.log(`表: ${tableName}`);
+      
+      // 获取表结构
+      if (alasql.tables[tableName].data && alasql.tables[tableName].data.length > 0) {
+        // 打印表头 (列名)
+        const firstRow = alasql.tables[tableName].data[0];
+        const columns = Object.keys(firstRow);
+        Logger.log(`表头: ${JSON.stringify(columns)}`);
+        
+        // 打印第一行数据
+        Logger.log(`第一行数据: ${JSON.stringify(firstRow)}`);
+        
+        // 打印表大小
+        Logger.log(`总行数: ${alasql.tables[tableName].data.length}`);
+      } else {
+        Logger.log("表为空或无数据");
+      }
+      Logger.log("-----------------");
+    }
+    Logger.log(`即将执行SQL: ${modifiedSql}`);
     
     // IMPORTANT: Define result variable here, outside the inner try/catch
     let result;
     
     try {
-      // Sample data for debugging
-      if (tableReferences.size > 0) {
-        try {
-          const firstTableRef = Array.from(tableReferences)[0];
-          const sampleData = alasql(`SELECT TOP 3 * FROM ${firstTableRef}`);
-          Logger.log(`${firstTableRef} 表的前3条数据: ${JSON.stringify(sampleData)}`);
-        } catch (e) {
-          Logger.log(`获取表数据示例失败: ${e}`);
-        }
-      }
-      
       // Execute the query
       result = alasql(modifiedSql, params);
     } catch (e) {
@@ -1075,29 +1042,29 @@ function executeRegularSQL(sql, params, startTime) {
       throw e; // Re-throw to outer catch
     }
     
-    // 记录执行时间
+    // Record execution time
     timings.execution = new Date().getTime() - executionStartTime;
     
-    // 格式化结果的开始时间 
+    // Formatting result start time 
     const formattingStartTime = new Date().getTime();
     
-    // 如果是 SELECT * 查询并且结果是数组，尝试保持原表的列顺序
+    // If SELECT * query and result is array, try to maintain original table column order
     if (Array.isArray(result) && result.length > 0) {
-      // 检查是否是简单的 SELECT * 查询
+      // Check if it's a simple SELECT * query
       const isSelectStar = /SELECT\s+\*\s+FROM\s+([^\s;]+)/i.test(sql);
       
       if (isSelectStar) {
-        // 尝试找到表名
+        // Try to find table name
         const tableMatch = sql.match(/FROM\s+([^\s;]+)/i);
         if (tableMatch && tableMatch[1]) {
           const originalTableRef = tableMatch[1].trim();
           const aliasedTableName = tableMapping[originalTableRef];
           
-          // 如果有这个表的列顺序记录，按照它重新排序结果
+          // If there's column order record for this table, reorder result based on it
           if (aliasedTableName && tableColumnOrders[aliasedTableName]) {
             const orderedColumns = tableColumnOrders[aliasedTableName];
             
-            // 重新排序结果的列
+            // Reorder result columns
             result = result.map(row => {
               const orderedRow = {};
               orderedColumns.forEach(column => {
@@ -1106,7 +1073,7 @@ function executeRegularSQL(sql, params, startTime) {
                 }
               });
               
-              // 添加可能的其他列（如计算列）
+              // Add possible other columns (e.g., calculated columns)
               Object.keys(row).forEach(key => {
                 if (!orderedColumns.includes(key)) {
                   orderedRow[key] = row[key];
@@ -1120,13 +1087,13 @@ function executeRegularSQL(sql, params, startTime) {
       }
     }
     
-    // 记录格式化时间
+    // Record formatting time
     timings.formatting = new Date().getTime() - formattingStartTime;
     
-    // 计算总时间
+    // Calculate total time
     const totalTime = new Date().getTime() - startTime;
     
-    // 将结果包装在一个对象中，包含执行时间信息
+    // Wrap result in an object, including execution time information
     return {
       data: result,
       stats: {
@@ -1152,14 +1119,14 @@ function executeRegularSQL(sql, params, startTime) {
  * @returns {HtmlOutput} - HTML 界面
  */
 function doGet(e) {
-  // 检查是否请求配置检查页面
+  // Check if request is for configuration check page
   Logger.log('doget page', e) 
   if (e && e.parameter && e.parameter.page === 'check') {
     Logger.log('check page') 
     return showConfigCheckPage();
   }
   
-  // 检查是否请求帮助页面
+  // Check if request is for help page
   if (e && e.parameter && e.parameter.page === 'help') {
     return HtmlService.createHtmlOutputFromFile('Help')
       .setTitle('Google Sheets SQL - 帮助文档');
@@ -1167,13 +1134,13 @@ function doGet(e) {
   
   const config = getConfig();
   
-  // 返回主页面
+  // Return main page
   return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle(config.app.name)
     .setFaviconUrl(config.app.faviconUrl);
 }
 
-// 暴露给前端的 API 函数
+// Expose API functions to client
 function getAllSheetsForClient() {
   return getAllSheets();
 }
@@ -1181,7 +1148,7 @@ function getAllSheetsForClient() {
 function executeSQLForClient(sql, params = {}) {
   const result = executeSQL(sql, params);
   
-  // 添加查询 SQL 到结果中，便于调试
+  // Add query SQL to result for debugging
   if (result.stats) {
     result.stats.sql = sql;
   }
@@ -1203,7 +1170,7 @@ function getSheetMetadata(fileId) {
       firstHeaders: [] // 第一个页签的表头
     };
     
-    // 获取所有页签名称
+    // Get all sheet names
     for (let i = 0; i < sheets.length; i++) {
       const sheet = sheets[i];
       result.sheets.push({
@@ -1211,7 +1178,7 @@ function getSheetMetadata(fileId) {
         index: i
       });
       
-      // 获取第一个页签的表头
+      // Get first sheet header
       if (i === 0 && sheet.getLastRow() > 0) {
         const headerRange = sheet.getRange(1, 1, 1, sheet.getLastColumn());
         result.firstHeaders = headerRange.getValues()[0];
@@ -1260,8 +1227,8 @@ function getExcludedColumns() {
  */
 function setExcludedColumns(columns) {
   try {
-    // 这里需要根据配置存储机制来更新配置
-    // 如果使用 Properties Service 来存储配置，代码可能类似：
+    // Here we need to update configuration based on storage mechanism
+    // If using Properties Service to store configuration, code might be similar:
     const userProperties = PropertiesService.getUserProperties();
     const configStr = userProperties.getProperty('gsql_config') || '{}';
     const config = JSON.parse(configStr);
@@ -1283,7 +1250,7 @@ function setExcludedColumns(columns) {
   }
 }
 
-// 为客户端暴露 API
+// Expose API functions to client
 function getExcludedColumnsForClient() {
   return getExcludedColumns();
 }
