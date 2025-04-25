@@ -641,8 +641,10 @@
 
                 document.getElementById('resultCount').textContent = `${results.length} 条记录`;
 
-                // 获取所有列
-                const columns = Object.keys(results[0]).filter(col => !col.startsWith('_validation'));
+                // Get all columns from all rows
+                const columns = [...new Set(results.flatMap(row => 
+                  Object.keys(row).filter(col => !col.startsWith('_validation'))
+                ))];
 
                 // 创建表格
                 let tableHtml = '<table class="table table-striped table-bordered result-table">';
