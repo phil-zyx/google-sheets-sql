@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.3/theme/dracula.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.1/font/bootstrap-icons.css">
     <style>
-            body {
+        body {
             padding: 20px;
             font-family: Arial, sans-serif;
             height: 100vh;
@@ -180,80 +180,97 @@
                     height: 300px;
                 }
             }
-            .template-name {
-                cursor: pointer;
-                color: #0d6efd;
-            }
-            .template-name:hover {
-                text-decoration: underline;
-            }
-            #previewSql {
-                max-height: 200px;
-                overflow: auto;
-                white-space: pre-wrap;
-                font-size: 0.9em;
-            }
-            /* 验证相关样式 */
-            .validation-controls {
-                margin-bottom: 15px;
-                padding: 10px;
-                background-color: #f8f9fa;
-                border-radius: 5px;
-            }
-            .validation-error {
-                color: #dc3545;
-            }
-            .validation-success {
-                color: #198754;
-            }
-            .validation-summary {
-                margin-top: 10px;
-                padding: 10px;
-                border-radius: 5px;
-            }
-            /* 添加悬停提示样式 */
-            tr.table-danger:hover {
-                background-color: #f8d7da;
-                cursor: help;
-            }
-            .public-template-card {
-                transition: transform 0.2s, box-shadow 0.2s;
-            }
-            .public-template-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            }
-            .public-template-card .template-name {
-                color: #0d6efd;
-                cursor: pointer;
-            }
-            .public-template-card .template-name:hover {
-                text-decoration: underline;
-            }
-            .rating-stars {
-                display: flex;
-                justify-content: center;
-                margin-bottom: 10px;
-            }
-            .btn-outline-warning:not(.active):hover {
-                background-color: transparent;
-                color: #ffc107;
-            }
-            .btn-check:checked+.btn-outline-warning {
-                background-color: #ffc107;
-                border-color: #ffc107;
-                color: #000;
-            }
-            /* Add to the CSS section */
-            .column-name {
-                cursor: pointer;
-                color: #0d6efd;
-                display: inline-block;
-                margin-right: 3px;
-            }
-            .column-name:hover {
-                text-decoration: underline;
-            }
+        }
+        .template-name {
+            cursor: pointer;
+            color: #0d6efd;
+        }
+        
+        .template-name:hover {
+            text-decoration: underline;
+        }
+        
+        #previewSql {
+            max-height: 200px;
+            overflow: auto;
+            white-space: pre-wrap;
+            font-size: 0.9em;
+        }
+        /* 验证相关样式 */
+        
+        .validation-controls {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .validation-error {
+            color: #dc3545;
+        }
+        
+        .validation-success {
+            color: #198754;
+        }
+        
+        .validation-summary {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        /* 添加悬停提示样式 */
+        
+        tr.table-danger:hover {
+            background-color: #f8d7da;
+            cursor: help;
+        }
+        
+        .public-template-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .public-template-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .public-template-card .template-name {
+            color: #0d6efd;
+            cursor: pointer;
+        }
+        
+        .public-template-card .template-name:hover {
+            text-decoration: underline;
+        }
+        
+        .rating-stars {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        
+        .btn-outline-warning:not(.active):hover {
+            background-color: transparent;
+            color: #ffc107;
+        }
+        
+        .btn-check:checked+.btn-outline-warning {
+            background-color: #ffc107;
+            border-color: #ffc107;
+            color: #000;
+        }
+        /* Add to the CSS section */
+        
+        .column-name {
+            cursor: pointer;
+            color: #0d6efd;
+            display: inline-block;
+            margin-right: 3px;
+        }
+        
+        .column-name:hover {
+            text-decoration: underline;
+        }
     </style>
 </head>
 
