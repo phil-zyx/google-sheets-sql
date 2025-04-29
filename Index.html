@@ -181,6 +181,7 @@
                 }
             }
         }
+        
         .template-name {
             cursor: pointer;
             color: #0d6efd;
@@ -283,7 +284,7 @@
                 <a data-nav-link="help" data-target="_blank" href="#" class="btn btn-sm btn-outline-info">
                     <i class="bi bi-question-circle"></i> 帮助文档
                 </a>
-                <a data-nav-link="check" href="#" class="btn btn-primary">配置检查工作流</a>
+                <a data-nav-link="check" data-target="_blank" href="#" class="btn btn-primary">配置检查工作流</a>
             </div>
         </div>
 
@@ -941,45 +942,60 @@
                 initEditor();
                 loadSheets();
 
-                // 等待短暂延迟后初始化模态框，确保DOM完全加载
-                setTimeout(initModals, 500);
-
-                // 加载查询历史（当切换到对应标签页时）
-                const historyTabEl = document.getElementById('history-tab');
-                if (historyTabEl) {
-                    historyTabEl.addEventListener('click', loadQueryHistory);
-                }
-
-                // 加载模板（当切换到对应标签页时）
-                const templatesTabEl = document.getElementById('templates-tab');
-                if (templatesTabEl) {
-                    templatesTabEl.addEventListener('click', refreshTemplates);
-                }
-
-                // 初始化公共模板功能
-                initPublicTemplatesFeature();
-
-                // 在页面加载后动态设置导航 URL
-                const currentUrl = window.location.href;
-
-                // 提取基础 URL（移除所有查询参数）
-                const baseUrl = currentUrl.split('?')[0];
-
-                // 设置导航链接
-                const navLinks = document.querySelectorAll('[data-nav-link]');
-                navLinks.forEach(link => {
-                    const target = link.getAttribute('data-nav-link');
-                    if (target === 'home') {
-                        link.href = baseUrl;
-                    } else {
-                        link.href = `${baseUrl}?page=${target}`;
-                    }
-
-                    // 如果链接需要在新窗口打开
-                    if (link.getAttribute('data-target') === '_blank') {
-                        link.target = '_blank';
-                    }
+                // Server-side navigation for Google Apps Script
+                document.querySelectorAll('[data-nav-link]').forEach(link => {
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        
+                        const target = this.getAttribute('data-nav-link');
+                        
+                        // 显示加载指示器
+                        const loadingHtml = '<div class="text-center p-5"><div class="spinner"></div> 加载中...</div>';
+                        
+                        if (this.getAttribute('data-target') === '_blank') {
+                            // 在新标签页中打开，依赖服务器返回正确URL
+                            google.script.run
+                                .withSuccessHandler(function(url) {
+                                    if (url) {
+                                        window.open(url, '_blank');
+                                    } else {
+                                        alert('无法获取页面URL');
+                                    }
+                                })
+                                .withFailureHandler(function(error) {
+                                    console.error('获取URL失败:', error);
+                                    alert('无法获取页面URL: ' + error);
+                                })
+                                .getDeploymentUrl(target);
+                        } else {
+                            // 在当前页面导航
+                            const tempDiv = document.createElement('div');
+                            tempDiv.innerHTML = loadingHtml;
+                            document.body.appendChild(tempDiv);
+                            
+                            google.script.run
+                                .withSuccessHandler(function(result) {
+                                    if (result && result.success) {
+                                        // 服务器成功处理，重定向到正确页面
+                                        window.location.href = result.url || (window.location.pathname + '?page=' + target);
+                                    } else {
+                                        alert('页面导航失败');
+                                        tempDiv.remove();
+                                    }
+                                })
+                                .withFailureHandler(function(error) {
+                                    console.error('导航错误:', error);
+                                    alert('导航失败: ' + error);
+                                    tempDiv.remove();
+                                })
+                                .navigateToPage(target);
+                        }
+                    });
                 });
+
+                // Continue with other initializations
+                setTimeout(initModals, 500);
+                // ...rest of the initialization code
             });
 
             // 过滤表列表
@@ -1004,6 +1020,24 @@
                         node.parentElement.style.display = 'none';
                     }
                 });
+            }
+
+            // Add these supporting functions
+            function showHelpContent() {
+                // Load or display help content
+                // For example, you could show a modal with help information
+                alert('Help documentation is not yet implemented.');
+                // Or better, show a modal with actual help content
+            }
+
+            function runConfigCheck() {
+                // Run configuration checks
+                google.script.run
+                    .withSuccessHandler(function(result) {
+                        alert('Configuration check completed: ' + (result.success ? 'OK' : 'Issues found'));
+                    })
+                    .withFailureHandler(handleError)
+                    .checkConfiguration();
             }
         </script>
 

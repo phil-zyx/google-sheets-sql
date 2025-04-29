@@ -1119,25 +1119,19 @@ function executeRegularSQL(sql, params, startTime) {
  * @returns {HtmlOutput} - HTML 界面
  */
 function doGet(e) {
-  // Check if request is for configuration check page
-  Logger.log('doget page', e) 
-  if (e && e.parameter && e.parameter.page === 'check') {
-    Logger.log('check page') 
-    return showConfigCheckPage();
+  var page = e.parameter.page || 'index';
+  
+  switch(page) {
+    case 'help':
+      return HtmlService.createHtmlOutputFromFile('HelpPage')
+        .setTitle('Google Sheets SQL - 帮助');
+    case 'check':
+      return HtmlService.createHtmlOutputFromFile('CheckPage')
+        .setTitle('Google Sheets SQL - 配置检查');
+    default:
+      return HtmlService.createHtmlOutputFromFile('Index')
+        .setTitle('Google Sheets SQL');
   }
-  
-  // Check if request is for help page
-  if (e && e.parameter && e.parameter.page === 'help') {
-    return HtmlService.createHtmlOutputFromFile('Help')
-      .setTitle('Google Sheets SQL - 帮助文档');
-  }
-  
-  const config = getConfig();
-  
-  // Return main page
-  return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle(config.app.name)
-    .setFaviconUrl(config.app.faviconUrl);
 }
 
 // Expose API functions to client
@@ -1257,4 +1251,49 @@ function getExcludedColumnsForClient() {
 
 function setExcludedColumnsForClient(columns) {
   return setExcludedColumns(columns);
+}
+
+ function getScriptUrl() {
+    return ScriptApp.getService().getUrl();
+}
+
+// Server-side functions in Code.gs
+function getPageUrl(page) {
+  var scriptId = ScriptApp.getScriptId();
+  return 'https://script.google.com/macros/s/' + scriptId + '/dev?page=' + page;
+}
+
+function loadPageHtml(page) {
+  switch(page) {
+    case 'help':
+      return HtmlService.createHtmlOutputFromFile('HelpPage').getContent();
+    case 'check':
+      return HtmlService.createHtmlOutputFromFile('CheckPage').getContent();
+    default:
+      return HtmlService.createHtmlOutputFromFile('Index').getContent();
+  }
+}
+
+function getDeploymentUrl(page) {
+  // 获取当前部署的URL
+  var url = ScriptApp.getService().getUrl();
+  if (url) {
+    return url + '?page=' + page;
+  }
+  return null;
+}
+
+function navigateToPage(page) {
+  try {
+    // 记录当前请求的页面，并返回成功响应
+    return {
+      success: true,
+      url: ScriptApp.getService().getUrl() + '?page=' + page
+    };
+  } catch(e) {
+    return {
+      success: false,
+      error: e.toString()
+    };
+  }
 }
